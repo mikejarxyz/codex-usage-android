@@ -48,6 +48,8 @@ jobs:
         run: python3 scripts/test-native-verifier.py
       - name: Install Android toolchain
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"'
+      - name: Prepare pinned sources before restoring nested target cache
+        run: bash scripts/build-native.sh --prepare-sources
       - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
         id: native-cache
         with:
@@ -57,6 +59,7 @@ jobs:
             .probe/codex/codex-rs/target
             .probe/openssl-android
           key: native-linux-${{ runner.arch }}-rust1.98-ndk27-${{ hashFiles('scripts/build-native.sh') }}
+          restore-keys: native-linux-${{ runner.arch }}-rust1.98-ndk27-
       - name: Build pinned native dependencies
         run: bash scripts/build-native.sh
       - name: Save successful native build before packaging

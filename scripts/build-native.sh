@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Build from pinned public inputs. No account data or host helper is involved.
 set -euo pipefail
+if [[ $# -gt 1 || ( $# -eq 1 && "$1" != "--prepare-sources" ) ]]; then
+  echo 'Usage: build-native.sh [--prepare-sources]' >&2; exit 1
+fi
 task_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 task_sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 task_jobs="${BUILD_JOBS:-2}"
@@ -9,7 +12,6 @@ task_codex_commit=cc7ba33601286a751477832b01de7b6f8de0dd9c
 task_openssl_commit=aae016bfd52fcad2bc9657c2c782cfdf73b1ed5f
 task_rust=1.98.0
 task_work="$task_root/.probe"
-if [[ -z "$task_sdk" ]]; then echo 'Set ANDROID_HOME to an Android SDK with NDK 27.0.12077973.' >&2; exit 1; fi
 case "$(uname -s)" in
   Linux) task_host=linux-x86_64 ;;
   Darwin) task_host=darwin-x86_64 ;;
@@ -17,8 +19,12 @@ case "$(uname -s)" in
 esac
 task_ndk="$task_sdk/ndk/$task_ndk_version"
 task_tools="$task_ndk/toolchains/llvm/prebuilt/$task_host/bin"
-test -x "$task_tools/aarch64-linux-android26-clang" || { echo 'Install the pinned Android NDK first.' >&2; exit 1; }
-for tool in git perl make cargo rustup; do command -v "$tool" >/dev/null || { echo "Missing prerequisite: $tool" >&2; exit 1; }; done
+command -v git >/dev/null || { echo 'Missing prerequisite: git' >&2; exit 1; }
+if [[ "${1:-}" != "--prepare-sources" ]]; then
+  if [[ -z "$task_sdk" ]]; then echo 'Set ANDROID_HOME to an Android SDK with NDK 27.0.12077973.' >&2; exit 1; fi
+  test -x "$task_tools/aarch64-linux-android26-clang" || { echo 'Install the pinned Android NDK first.' >&2; exit 1; }
+  for tool in perl make cargo rustup; do command -v "$tool" >/dev/null || { echo "Missing prerequisite: $tool" >&2; exit 1; }; done
+fi
 mkdir -p "$task_work"
 pin_checkout() {
   local location="$1" remote="$2" commit="$3"
@@ -36,6 +42,7 @@ pin_checkout() {
 }
 pin_checkout "$task_work/codex" https://github.com/openai/codex.git "$task_codex_commit"
 pin_checkout "$task_work/openssl-official" https://github.com/openssl/openssl.git "$task_openssl_commit"
+if [[ "${1:-}" == "--prepare-sources" ]]; then exit 0; fi
 task_openssl="$task_work/openssl-android"
 task_stamp="$task_openssl_commit/$task_ndk_version/android26"
 if [[ ! -f "$task_openssl/lib/libssl.a" || ! -f "$task_openssl/lib/libcrypto.a" || ! -f "$task_openssl/.build-inputs" || "$(cat "$task_openssl/.build-inputs" 2>/dev/null)" != "$task_stamp" ]]; then
