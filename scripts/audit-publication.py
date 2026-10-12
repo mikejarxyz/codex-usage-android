@@ -1,5 +1,6 @@
 """Audit prospective/current Git files without printing matched credential values."""
 import pathlib
+import hashlib
 import re
 import subprocess
 import sys
@@ -39,6 +40,11 @@ def main():
                      or path.name == ".env" or path.name.startswith(".env.") and path.name != ".env.example")
         if sensitive or path.is_symlink():
             findings.append((relative, 0, "sensitive/generated path or symlink"))
+            continue
+        if relative == "gradle/wrapper/gradle-wrapper.jar":
+            expected = "2db75c40782f5e8ba1fc278a5574bab070adccb2d21ca5a6e5ed840888448046"
+            if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+                findings.append((relative, 0, "Gradle wrapper checksum differs from the official 8.12 wrapper"))
             continue
         try:
             text = path.read_text(encoding="utf-8-sig")

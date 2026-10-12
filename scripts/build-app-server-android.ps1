@@ -13,7 +13,7 @@ $expectedCommit = 'cc7ba33601286a751477832b01de7b6f8de0dd9c'
 foreach ($requiredPath in @("$sourceRoot\Cargo.toml", "$opensslRoot\lib\libssl.a",
         "$opensslRoot\lib\libcrypto.a", "$ndkBin\aarch64-linux-android26-clang.cmd")) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
-        throw "Missing native build prerequisite: $requiredPath. See DIAGNOSTICS.md."
+        throw "Missing native build prerequisite: $requiredPath. See BUILDING.md."
     }
 }
 $actualCommit = & git -C $sourceRoot rev-parse HEAD
