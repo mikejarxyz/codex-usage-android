@@ -11,6 +11,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.graphics.drawable.RippleDrawable;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.IBinder;
 import android.view.Gravity;
 import android.view.View;
@@ -267,11 +268,15 @@ public final class MainActivity extends Activity {
     private void showMenu(View anchor) {
         PopupMenu menu = new PopupMenu(this, anchor, Gravity.END);
         AppWidgetManager widgets = getSystemService(AppWidgetManager.class);
-        if (widgets.isRequestPinAppWidgetSupported()) menu.getMenu().add(0, 1, 0, "Add widget");
+        if (widgets.isRequestPinAppWidgetSupported())
+            menu.getMenu().add(0, 1, 0, "Add widget").setIcon(R.drawable.ic_menu_widget);
+        menu.getMenu().add(0, 3, 1, "Licence").setIcon(R.drawable.ic_menu_licence);
+        menu.getMenu().add(0, 4, 2, "Privacy").setIcon(R.drawable.ic_menu_privacy);
         if ((service != null && service.hasLocalSession()) || UsageSnapshot.load(this) != null)
-            menu.getMenu().add(0, 2, 1, "Sign out").setEnabled(service != null && service.canSignOut());
-        menu.getMenu().add(0, 3, 2, "Open-source licenses");
-        menu.getMenu().add(0, 4, 3, "Privacy");
+            menu.getMenu().add(1, 2, 3, "Sign out").setIcon(R.drawable.ic_menu_sign_out)
+                    .setEnabled(service != null && service.canSignOut());
+        if (Build.VERSION.SDK_INT >= 28) menu.getMenu().setGroupDividerEnabled(true);
+        if (Build.VERSION.SDK_INT >= 29) menu.setForceShowIcon(true);
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) {
                 widgets.requestPinAppWidget(new ComponentName(this, UsageWidget.class), null, null);

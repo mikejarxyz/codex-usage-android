@@ -9,7 +9,7 @@ This is a beta release checklist, not a claim that the app is ready for Play.
 - Public support/privacy email: `codex-usage@getclear.digital` (confirmed operational).
 - Play developer account: not created. Organization identity/D-U-N-S lookup remains pending.
 - Signing: Play App Signing with a separate private upload key. The local key
-  has been generated; the owner must confirm a secure backup before distribution.
+  has been generated; the owner confirmed a secure backup on October 12, 2026.
 - Final screenshots and review of OpenAI trademark use. The launcher icon is an
   original usage-bar mark; the header/widget currently use the OpenAI Blossom.
   OpenAI's guidelines prohibit it as primary branding, so the release presentation
