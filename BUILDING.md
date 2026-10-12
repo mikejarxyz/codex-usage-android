@@ -75,6 +75,8 @@ For checks against the non-debuggable signed release, add `-PreleaseChecks`
 and the private signing configuration when building `:app:assembleReleaseAndroidTest`.
 The test APK shares the release certificate. Use `-e compatibilityCheck true`
 on the 16 KB emulator; never run its synthetic-cache mode on a signed-in phone.
+Use `-e refreshLayoutCheck true` on a signed-in phone for compact footer bounds,
+pressed-state rendering, stable refresh geometry, and the expanded touch target.
 
 After editing PRIVACY.md, run `python scripts/generate-privacy.py` to update the
 offline in-app copy. CI checks that both copies agree.

@@ -76,20 +76,30 @@ public final class MainActivity extends Activity {
         updateRow.addView(resetCount);
         updated = text("Not updated yet", 12, MUTED, false);
         updated.setGravity(Gravity.END | Gravity.CENTER_VERTICAL);
+        updated.setSingleLine(true);
+        updated.setEllipsize(android.text.TextUtils.TruncateAt.END);
         LinearLayout.LayoutParams updatedParams = new LinearLayout.LayoutParams(0, -2, 1);
         updatedParams.leftMargin = dp(8);
+        updatedParams.rightMargin = dp(4);
         updateRow.addView(updated, updatedParams);
         refresh = new ImageButton(this);
         refresh.setImageResource(R.drawable.ic_refresh);
-        refresh.setPadding(dp(14), dp(14), dp(14), dp(14));
+        refresh.setPadding(dp(6), dp(6), dp(6), dp(6));
         refresh.setImageAlpha(166);
         refresh.setBackground(new RippleDrawable(ColorStateList.valueOf(Color.rgb(85,85,85)),
-                shape(SURFACE, 24, false), null));
+                shape(SURFACE, 16, false), shape(Color.WHITE, 16, false)));
         refresh.setContentDescription("Refresh usage");
-        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(48), dp(48));
-        refreshParams.rightMargin = -dp(14);
+        LinearLayout.LayoutParams refreshParams = new LinearLayout.LayoutParams(dp(32), dp(32));
         updateRow.addView(refresh, refreshParams);
         add(usageCard, updateRow, 8);
+        // Keep the footer compact while retaining a 48 dp tap target inside the card.
+        updateRow.addOnLayoutChangeListener((view, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom) -> {
+            android.graphics.Rect hit = new android.graphics.Rect();
+            refresh.getDrawingRect(hit);
+            usageCard.offsetDescendantRectToMyCoords(refresh, hit);
+            hit.inset(-dp(8), -dp(8));
+            usageCard.setTouchDelegate(new android.view.TouchDelegate(hit, refresh));
+        });
         error = text("", 14, MUTED, false);
         error.setVisibility(View.GONE);
         error.setAccessibilityLiveRegion(View.ACCESSIBILITY_LIVE_REGION_POLITE);

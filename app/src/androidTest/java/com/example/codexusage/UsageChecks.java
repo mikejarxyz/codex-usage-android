@@ -25,18 +25,28 @@ public final class UsageChecks extends Instrumentation {
     private boolean compatibilityCheck;
     private boolean licensesCheck;
     private boolean hardeningCheck;
+    private boolean refreshLayoutCheck;
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         signOutCheck = arguments != null && "true".equals(arguments.getString("signOutCheck"));
         compatibilityCheck = arguments != null && "true".equals(arguments.getString("compatibilityCheck"));
         licensesCheck = arguments != null && "true".equals(arguments.getString("licensesCheck"));
         hardeningCheck = arguments != null && "true".equals(arguments.getString("hardeningCheck"));
+        refreshLayoutCheck = arguments != null && "true".equals(arguments.getString("refreshLayoutCheck"));
         start();
     }
     @Override public void onStart() {
         Bundle result = new Bundle();
         int resultCode = Activity.RESULT_OK;
         try {
+            if (refreshLayoutCheck) {
+                checkRefreshLayout();
+                File preview = new File(getTargetContext().getCacheDir(), "refresh-pressed-preview.png");
+                result.putString("pressedPreview", android.util.Base64.encodeToString(
+                        java.nio.file.Files.readAllBytes(preview.toPath()), android.util.Base64.NO_WRAP));
+                result.putString("checkMessage", "Refresh bounds, compact footer, pressed state, stable loading geometry, and expanded touch target passed.");
+                return;
+            }
             if (hardeningCheck) {
                 checkRecovery();
                 result.putString("stream", "Cache failure, backend timeout, local logout recovery, and dual widget checks passed.\n");
@@ -173,6 +183,63 @@ public final class UsageChecks extends Instrumentation {
             if (widgetHost != null) { widgetHost.stopListening(); widgetHost.deleteHost(); }
             finish(resultCode, result);
         }
+    }
+    private void checkRefreshLayout() throws Exception {
+        MainActivity activity = (MainActivity)startActivitySync(new Intent(getTargetContext(), MainActivity.class)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        java.lang.reflect.Field serviceField = MainActivity.class.getDeclaredField("service");
+        java.lang.reflect.Field refreshField = MainActivity.class.getDeclaredField("refresh");
+        java.lang.reflect.Field footerField = MainActivity.class.getDeclaredField("updateRow");
+        java.lang.reflect.Field updatedField = MainActivity.class.getDeclaredField("updated");
+        for (java.lang.reflect.Field field : new java.lang.reflect.Field[]{serviceField, refreshField, footerField, updatedField}) field.setAccessible(true);
+        waitFor(() -> {
+            try { UsageService service = (UsageService)serviceField.get(activity); return service != null && !service.loading && service.snapshot != null; }
+            catch (Exception e) { throw new AssertionError(e); }
+        });
+        float density = getTargetContext().getResources().getDisplayMetrics().density;
+        java.util.concurrent.atomic.AtomicReference<UsageService> state = new java.util.concurrent.atomic.AtomicReference<>();
+        java.util.concurrent.atomic.AtomicInteger height = new java.util.concurrent.atomic.AtomicInteger();
+        long before = UsageSnapshot.load(getTargetContext()).updatedAt;
+        runOnMainSync(() -> {
+            try {
+                android.widget.ImageButton button = (android.widget.ImageButton)refreshField.get(activity);
+                View footer = (View)footerField.get(activity);
+                android.view.ViewGroup card = (android.view.ViewGroup)footer.getParent();
+                check(button.getLeft() >= 0 && button.getRight() <= footer.getWidth(), "Refresh visual/ripple must fit inside footer bounds");
+                check(footer.getHeight() <= Math.round(32 * density) + 1, "Refresh must not inflate footer beyond 32 dp");
+                height.set(card.getHeight());
+                button.setPressed(true);
+                button.getBackground().jumpToCurrentState();
+                renderImage(activity.getWindow().getDecorView(), 411, 836, "refresh-pressed-preview.png");
+                button.setPressed(false);
+                android.graphics.Rect bounds = new android.graphics.Rect();
+                button.getDrawingRect(bounds);
+                card.offsetDescendantRectToMyCoords(button, bounds);
+                // Tap outside the 32 dp visual button, inside its expanded 48 dp touch target.
+                float x = bounds.right + 4 * density, y = bounds.exactCenterY();
+                long time = android.os.SystemClock.uptimeMillis();
+                android.view.MotionEvent down = android.view.MotionEvent.obtain(time, time, android.view.MotionEvent.ACTION_DOWN, x, y, 0);
+                android.view.MotionEvent up = android.view.MotionEvent.obtain(time, time + 50, android.view.MotionEvent.ACTION_UP, x, y, 0);
+                try { check(card.dispatchTouchEvent(down) && card.dispatchTouchEvent(up), "Expanded refresh target must accept the tap"); }
+                finally { down.recycle(); up.recycle(); }
+                UsageService service = (UsageService)serviceField.get(activity);
+                state.set(service);
+            } catch (Exception e) { throw new AssertionError(e); }
+        });
+        waitFor(() -> state.get().loading);
+        runOnMainSync(() -> {
+            try {
+                check(((TextView)updatedField.get(activity)).getText().toString().equals("Refreshing…"), "Refreshing status must replace updated text");
+            } catch (Exception e) { throw new AssertionError(e); }
+        });
+        waitFor(() -> !state.get().loading);
+        check(UsageSnapshot.load(getTargetContext()).updatedAt > before, "Refresh must save a new successful quota response");
+        runOnMainSync(() -> {
+            try {
+                View footer = (View)footerField.get(activity);
+                check(((View)footer.getParent()).getHeight() == height.get(), "Refresh completion must not shift card height");
+            } catch (Exception e) { throw new AssertionError(e); }
+        });
     }
     private void checkLicenses() throws Exception {
         try (java.io.InputStream input = getTargetContext().getAssets().open("third_party_licenses.html");
