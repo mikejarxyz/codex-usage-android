@@ -16,7 +16,8 @@ filenames, local network addresses, and private host paths. It reports only file
 locations and categories, never credential values. It also tests required ignore
 rules. This is a publication check, not a penetration test or a guarantee that
 every possible secret format is recognizable. It does not audit historical Git
-commits or perform a vulnerability review of every native dependency.
+commits or perform a vulnerability review of every native dependency. CI also
+runs a checksum-verified Gitleaks scan of the repository's full Git history.
 
 Never commit account sessions, auth exports, signing keys/passwords, `.env` files,
 local diagnostics, or generated build output. Do not force-add ignored files.

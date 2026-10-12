@@ -201,6 +201,11 @@ public final class MainActivity extends Activity {
             LinearLayout empty = column();
             empty.addView(text("Your Codex usage", 17, TEXT, true));
             add(empty, text("Sign in to see what’s remaining.", 14, MUTED, false), 16);
+            if (service != null && !service.loading && !service.canSignIn) {
+                Button retry = button("Retry connection", false);
+                retry.setOnClickListener(view -> service.refresh());
+                add(empty, retry, 16);
+            }
             windows.addView(empty);
             updated.setText("Not updated yet");
             return;
@@ -253,9 +258,10 @@ public final class MainActivity extends Activity {
         PopupMenu menu = new PopupMenu(this, anchor, Gravity.END);
         AppWidgetManager widgets = getSystemService(AppWidgetManager.class);
         if (widgets.isRequestPinAppWidgetSupported()) menu.getMenu().add(0, 1, 0, "Add widget");
-        if ((service != null && service.authenticated()) || UsageSnapshot.load(this) != null)
+        if ((service != null && service.hasLocalSession()) || UsageSnapshot.load(this) != null)
             menu.getMenu().add(0, 2, 1, "Sign out").setEnabled(service != null && service.canSignOut());
         menu.getMenu().add(0, 3, 2, "Open-source licenses");
+        menu.getMenu().add(0, 4, 3, "Privacy");
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == 1) {
                 widgets.requestPinAppWidget(new ComponentName(this, UsageWidget.class), null, null);
@@ -268,6 +274,8 @@ public final class MainActivity extends Activity {
                         }).show();
             } else if (item.getItemId() == 3) {
                 startActivity(new Intent(this, LicensesActivity.class));
+            } else if (item.getItemId() == 4) {
+                startActivity(new Intent(this, LicensesActivity.class).putExtra("privacy", true));
             }
             return true;
         });

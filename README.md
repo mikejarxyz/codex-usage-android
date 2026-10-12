@@ -13,14 +13,15 @@ it is not affiliated with or endorsed by OpenAI.
 
 Account authentication stays in private app storage. The widget cache contains
 only displayable quota data, not credentials. Android backups are disabled.
-The app has no developer-operated backend, analytics, or advertising SDK.
+The app has no developer-operated backend or advertising SDK. The bundled
+app-server's analytics and telemetry exporters are explicitly disabled.
 Sign-in and quota requests communicate with OpenAI; this is not an offline app.
 
 Android schedules automatic refresh about every 15 minutes while a widget is
 installed. Battery/idle policies can delay it. Recent data and recent automatic
 attempts are skipped; removing the last widget cancels the schedule. Failed
-refreshes preserve the last successful values and timestamp. The widget currently
-shows the quota window with the least remaining percentage.
+refreshes preserve the last successful values and timestamp. The widget shows both five-hour and weekly windows when returned, with a
+compact two-column layout at its smallest size.
 
 ## Build and compatibility
 
@@ -31,7 +32,8 @@ Tests cover quota semantics, layout, manual refresh, background jobs, and cooldo
 API 36 layout and native startup have also been checked in a 16 KB emulator using
 Android ARM translation. Broader device and battery-policy testing remains needed.
 
-Production signing and Play Store setup are not configured yet. Keep upload keys,
+Private release signing can be configured; Play Store setup remains pending.
+See [RELEASING.md](RELEASING.md) and [PRIVACY.md](PRIVACY.md). Keep upload keys,
 credentials, local diagnostics, and generated artifacts outside source control.
 
 ## License and third-party code

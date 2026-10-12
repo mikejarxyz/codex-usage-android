@@ -58,7 +58,8 @@ public final class LicensesActivity extends Activity {
             });
             root.requestApplyInsets();
         }
-        try (InputStream input = getAssets().open("third_party_licenses.html");
+        boolean privacy = getIntent().getBooleanExtra("privacy", false);
+        try (InputStream input = getAssets().open(privacy ? "privacy.html" : "third_party_licenses.html");
                 ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             byte[] buffer = new byte[8192];
             int count;
@@ -67,7 +68,7 @@ public final class LicensesActivity extends Activity {
                     "text/html", "UTF-8", null);
         } catch (Exception ignored) {
             TextView error = new TextView(this);
-            error.setText("License notices could not be loaded.");
+            error.setText(privacy ? "Privacy information could not be loaded." : "License notices could not be loaded.");
             root.addView(error);
         }
     }

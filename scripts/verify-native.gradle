@@ -6,7 +6,7 @@ tasks.register('verifyNativePageSizes') {
     def nativeFiles = fileTree(rootProject.file('.probe/packaged-native')) { include '**/*.so' }
     inputs.files(nativeFiles)
     doLast {
-        if (nativeFiles.empty) throw new GradleException('Native app-server missing. Run scripts/build-app-server-android.ps1 first.')
+        if (nativeFiles.empty) throw new GradleException('Native app-server missing. Follow the pinned bootstrap in BUILDING.md first.')
         nativeFiles.each { binary ->
             def bytes = binary.bytes
             if (bytes.length < 64 || bytes[0] != 0x7f || bytes[1] != 69 || bytes[2] != 76

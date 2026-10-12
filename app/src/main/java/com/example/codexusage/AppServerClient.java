@@ -69,7 +69,9 @@ final class AppServerClient {
                     return;
                 }
                 ProcessBuilder builder = new ProcessBuilder(binary.getAbsolutePath(),
-                        "--listen", "stdio://", "-c", "cli_auth_credentials_store=\"file\"");
+                        "--listen", "stdio://", "-c", "cli_auth_credentials_store=\"file\"",
+                        "-c", "analytics.enabled=false", "-c", "otel.exporter=\"none\"",
+                        "-c", "otel.trace_exporter=\"none\"", "-c", "otel.metrics_exporter=\"none\"");
                 builder.directory(context.getFilesDir());
                 builder.environment().put("CODEX_HOME", home.getAbsolutePath());
                 builder.environment().put("TMPDIR", context.getCacheDir().getAbsolutePath());

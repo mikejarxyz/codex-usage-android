@@ -8,13 +8,19 @@
 - Rust 1.98.0 and its `aarch64-linux-android` standard library.
 - Python 3.10+ for generating dependency notices and the publication audit.
 
-The current native build helper is PowerShell for Windows. A portable native
-bootstrap and Gradle wrapper remain follow-up work; the native prerequisites
-must be prepared before building a fresh clone.
+The checked-in Gradle wrapper pins Gradle 8.12 and verifies the distribution
+checksum. GitHub Actions builds the pinned native inputs on Ubuntu without
+account credentials and uploads unsigned beta artifacts. Linux is the CI-tested
+bootstrap target; macOS support in the helper is not yet validated.
 
 ## Native prerequisites
 
-Use an ignored `.probe/` directory for local dependencies and build output:
+On Linux, install Git, Perl, Make, Rustup/Cargo, the pinned SDK/NDK, and JDK.
+Set `ANDROID_HOME`, then run `bash scripts/build-native.sh`. The helper checks out
+exact Codex/OpenSSL commits under ignored `.probe/`, builds static OpenSSL and the
+ARM64 executable, and leaves account data untouched.
+
+On Windows with prepared native dependencies:
 
 1. Clone [OpenAI Codex](https://github.com/openai/codex) into `.probe/codex` and
    check out `cc7ba33601286a751477832b01de7b6f8de0dd9c`. Do not change its lockfile.
@@ -31,8 +37,8 @@ Use an ignored `.probe/` directory for local dependencies and build output:
 With the Android SDK and Java environment configured, run:
 
 ```text
-gradle :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
-gradle :app:bundleRelease
+./gradlew :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+./gradlew :app:bundleRelease
 ```
 
 `verifyNativePageSizes` runs before packaging and rejects missing binaries,
@@ -53,10 +59,17 @@ background job. It briefly ages only the sanitized display cache and restores it
 if the check fails. It does not export or replace auth credentials.
 
 `-PisolatedChecks` builds a separate `com.example.codexusage.checks` installation.
-Run the instrumentation with `-e signOutCheck true` there to test logout without
-affecting a user's main installation.
+Run instrumentation with `-e signOutCheck true` for official logout, or
+`-e hardeningCheck true` for cache-write failure, backend timeout, local sign-out
+recovery, and both widget layouts. These modes require the isolated package and
+use synthetic data without affecting a user's main installation.
 
 `-e compatibilityCheck true` is for an API 36 x86_64 16 KB emulator. It uses
 synthetic quota, checks window insets, and verifies actual ARM64 app-server
 initialization through Android native translation. It is not a physical ARM64
 hardware test.
+
+For permanent identity, private signing, and Play rollout, see [RELEASING.md](RELEASING.md).
+
+After editing PRIVACY.md, run `python scripts/generate-privacy.py` to update the
+offline in-app copy. CI checks that both copies agree.

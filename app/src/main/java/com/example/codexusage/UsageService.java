@@ -26,6 +26,7 @@ public final class UsageService extends Service {
     boolean loading;
     boolean canSignIn;
     String error = "";
+    private String persistenceError = "";
     String verificationUrl = "";
     String userCode = "";
     private final Runnable timeout = () -> {
@@ -60,6 +61,7 @@ public final class UsageService extends Service {
     private void startClient() {
         loading = true;
         error = "";
+        persistenceError = "";
         long current = ++generation;
         client = new AppServerClient(this, new AppServerClient.Listener() {
             @Override public void update(String status, boolean ready, String url, String code) {
@@ -75,9 +77,7 @@ public final class UsageService extends Service {
             @Override public void quotaReceived(UsageSnapshot fresh) {
                 main.post(() -> {
                     if (current != generation) return;
-                    snapshot = fresh;
-                    try { snapshot.save(UsageService.this); }
-                    catch (Exception ignored) { error = "Couldn’t save the latest usage."; }
+                    acceptQuota(fresh);
                 });
             }
             @Override public void finished(String message) {
@@ -118,6 +118,7 @@ public final class UsageService extends Service {
         if (foreground) promote();
         loading = true;
         error = "";
+        persistenceError = "";
         changed();
         if (client == null || !client.isReady()) {
             if (client != null) client.close();
@@ -133,18 +134,27 @@ public final class UsageService extends Service {
         promote();
         loading = true;
         error = "";
+        persistenceError = "";
         armTimeout(16 * 60 * 1000L);
         client.signIn(deviceCode);
         changed();
     }
 
     void cancelSignIn() { if (client != null) client.cancelSignIn(); }
-    boolean canSignOut() { return !loading && client != null && client.isReady(); }
+    boolean hasLocalSession() {
+        return snapshot != null || authenticated() || new java.io.File(getFilesDir(), "codex/auth.json").isFile();
+    }
+    boolean canSignOut() { return !loading && hasLocalSession(); }
     void signOut() {
         if (!canSignOut()) return;
+        if (client == null || !client.isReady()) {
+            clearLocalSession();
+            return;
+        }
         promote();
         loading = true;
         error = "";
+        persistenceError = "";
         armTimeout(60_000);
         client.signOut();
         changed();
@@ -152,15 +162,42 @@ public final class UsageService extends Service {
     boolean authenticated() { return client != null && client.isAuthenticated(); }
     boolean loginPending() { return client != null && client.isLoginPending(); }
 
+    void acceptQuota(UsageSnapshot fresh) {
+        snapshot = fresh;
+        persistenceError = "";
+        try { fresh.save(this); }
+        catch (Exception ignored) { persistenceError = "Couldn’t save the latest usage."; }
+    }
+
+    private void clearLocalSession() {
+        // Stop the child before removing its file-backed credential, and discard late callbacks.
+        ++generation;
+        if (client != null) client.close();
+        client = null;
+        canSignIn = false;
+        java.io.File auth = new java.io.File(getFilesDir(), "codex/auth.json");
+        if (auth.exists() && !auth.delete()) {
+            finish("Couldn’t remove the saved sign-in. Try again.");
+            return;
+        }
+        snapshot = null;
+        UsageSnapshot.clear(this);
+        verificationUrl = "";
+        userCode = "";
+        persistenceError = "";
+        // Local account/read needs no network and restores the sign-in controls if the backend starts.
+        startClient();
+    }
+
     private void armTimeout(long millis) {
         main.removeCallbacks(timeout);
         main.postDelayed(timeout, millis);
     }
 
-    private void finish(String message) {
+    void finish(String message) {
         main.removeCallbacks(timeout);
         loading = false;
-        error = message;
+        error = message.isEmpty() ? persistenceError : message;
         if (message.startsWith("Sign in to") || message.startsWith("Sign in with")) {
             snapshot = null;
             UsageSnapshot.clear(this);
@@ -199,4 +236,5 @@ public final class UsageService extends Service {
         UsageWidget.updateAll(this);
         super.onDestroy();
     }
+    @Override public void onTimeout(int startId, int foregroundServiceType) { timeout.run(); }
 }

@@ -2,6 +2,18 @@ plugins {
     id 'com.android.application'
 }
 
+def releaseApplicationId = providers.gradleProperty('releaseApplicationId').orNull
+def signingPath = providers.gradleProperty('releaseSigningFile').orNull
+def productionRelease = project.hasProperty('productionRelease')
+def privateSigning = new Properties()
+if (signingPath != null) {
+    def signingFile = file(signingPath)
+    if (!signingFile.isFile()) throw new GradleException('Private signing configuration was not found.')
+    signingFile.withInputStream { privateSigning.load(it) }
+    ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].each {
+        if (!privateSigning.getProperty(it)) throw new GradleException('Private signing configuration is incomplete.')
+    }
+}
 android {
     namespace 'com.example.codexusage'
     compileSdk 36
@@ -22,10 +34,37 @@ android {
     sourceSets.main.jniLibs.srcDirs = [rootProject.file('.probe/packaged-native')]
     packaging.jniLibs.useLegacyPackaging = true
 
+    signingConfigs {
+        if (signingPath != null) {
+            release {
+                storeFile file(privateSigning.getProperty('storeFile'))
+                storePassword privateSigning.getProperty('storePassword')
+                keyAlias privateSigning.getProperty('keyAlias')
+                keyPassword privateSigning.getProperty('keyPassword')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (signingPath != null) signingConfig signingConfigs.release
+        }
+    }
+    if (releaseApplicationId != null) {
+        // Only the production variant changes identity; debug installs preserve development sessions.
+        applicationVariants.all { variant ->
+            if (variant.buildType.name == 'release') variant.mergedFlavor.setApplicationId(releaseApplicationId)
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
+}
+
+if (productionRelease && (releaseApplicationId == null || releaseApplicationId.startsWith('com.example.')
+        || signingPath == null || project.hasProperty('isolatedChecks'))) {
+    throw new GradleException('Production requires a permanent releaseApplicationId and a private releaseSigningFile, without isolatedChecks.')
 }
 
 apply from: rootProject.file('scripts/verify-native.gradle')

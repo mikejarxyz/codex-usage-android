@@ -24,17 +24,24 @@ public final class UsageChecks extends Instrumentation {
     private boolean signOutCheck;
     private boolean compatibilityCheck;
     private boolean licensesCheck;
+    private boolean hardeningCheck;
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         signOutCheck = arguments != null && "true".equals(arguments.getString("signOutCheck"));
         compatibilityCheck = arguments != null && "true".equals(arguments.getString("compatibilityCheck"));
         licensesCheck = arguments != null && "true".equals(arguments.getString("licensesCheck"));
+        hardeningCheck = arguments != null && "true".equals(arguments.getString("hardeningCheck"));
         start();
     }
     @Override public void onStart() {
         Bundle result = new Bundle();
         int resultCode = Activity.RESULT_OK;
         try {
+            if (hardeningCheck) {
+                checkRecovery();
+                result.putString("stream", "Cache failure, backend timeout, local logout recovery, and dual widget checks passed.\n");
+                return;
+            }
             if (licensesCheck) {
                 checkLicenses();
                 result.putString("stream", "Bundled license texts and restricted local license viewer passed.\n");
@@ -107,8 +114,9 @@ public final class UsageChecks extends Instrumentation {
                 View widget = UsageWidget.views(getTargetContext()).apply(getTargetContext(), host);
                 host.addView(widget);
                 check(((TextView) widget.findViewById(R.id.widget_percent)).getText().toString()
-                        .equals(finalActual.widgetWindow().percent() + " left"), "Widget must render real remaining quota");
-                renderImage(host, 280, 84, "widget-preview.png");
+                        .equals((finalActual.windows.size() > 1 ? finalActual.windows.get(0) : finalActual.widgetWindow()).percent() + " left"),
+                        "Widget must render real remaining quota");
+                renderImage(host, 280, finalActual.windows.size() > 1 ? 124 : 84, "widget-preview.png");
                 FrameLayout compactHost = new FrameLayout(getTargetContext());
                 View compactWidget = UsageWidget.views(getTargetContext(), true).apply(getTargetContext(), compactHost);
                 compactHost.addView(compactWidget);
@@ -190,6 +198,20 @@ public final class UsageChecks extends Instrumentation {
                 renderImage(activity.getWindow().getDecorView(), 411, 836, "licenses-preview.png");
             });
         } finally { runOnMainSync(activity::finish); }
+        Activity privacy = startActivitySync(new Intent(getTargetContext(), LicensesActivity.class)
+                .putExtra("privacy", true).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try {
+            waitFor(() -> {
+                android.webkit.WebView view = findLicenseView(privacy.getWindow().getDecorView());
+                return view != null && view.getProgress() == 100;
+            });
+            runOnMainSync(() -> {
+                android.webkit.WebView view = findLicenseView(privacy.getWindow().getDecorView());
+                check(!view.getSettings().getJavaScriptEnabled() && view.getSettings().getBlockNetworkLoads(),
+                        "Privacy policy must load offline without scripts");
+                renderImage(privacy.getWindow().getDecorView(), 411, 836, "privacy-preview.png");
+            });
+        } finally { runOnMainSync(privacy::finish); }
     }
     private android.webkit.WebView findLicenseView(View view) {
         if (view instanceof android.webkit.WebView) return (android.webkit.WebView)view;
@@ -287,6 +309,78 @@ public final class UsageChecks extends Instrumentation {
             return output.toString();
         }
     }
+    private void checkRecovery() throws Exception {
+        check(getTargetContext().getPackageName().endsWith(".checks"), "Recovery checks require an isolated installation");
+        java.util.concurrent.atomic.AtomicReference<UsageService> service = new java.util.concurrent.atomic.AtomicReference<>();
+        android.content.ServiceConnection connection = new android.content.ServiceConnection() {
+            @Override public void onServiceConnected(ComponentName name, android.os.IBinder binder) {
+                service.set(((UsageService.LocalBinder)binder).service());
+                service.get().observe(() -> {});
+            }
+            @Override public void onServiceDisconnected(ComponentName name) { service.set(null); }
+        };
+        runOnMainSync(() -> getTargetContext().bindService(new Intent(getTargetContext(), UsageService.class),
+                connection, android.content.Context.BIND_AUTO_CREATE));
+        File cache = new File(getTargetContext().getFilesDir(), "usage.json");
+        File blocker = new File(cache, "blocker");
+        try {
+            waitFor(() -> service.get() != null && !service.get().loading && service.get().canSignIn);
+            UsageSnapshot fixture = UsageSnapshot.fromResponse(response(System.currentTimeMillis()), System.currentTimeMillis());
+            UsageSnapshot.clear(getTargetContext());
+            check(cache.mkdir(), "Must create simulated cache obstruction");
+            check(blocker.createNewFile(), "Must obstruct cache replacement");
+            runOnMainSync(() -> {
+                service.get().acceptQuota(fixture);
+                service.get().finish("");
+                check(service.get().error.contains("save") && service.get().snapshot == fixture,
+                        "Cache failure must survive request completion while keeping fresh data visible");
+            });
+            check(blocker.delete() && cache.delete(), "Must remove simulated obstruction");
+            fixture.save(getTargetContext());
+            java.lang.reflect.Field field = UsageService.class.getDeclaredField("timeout");
+            field.setAccessible(true);
+            Runnable timeout = (Runnable)field.get(service.get());
+            runOnMainSync(() -> {
+                timeout.run();
+                check(service.get().canSignOut() && service.get().snapshot == fixture,
+                        "A stopped backend must retain quota and permit local sign-out");
+            });
+            File auth = new File(getTargetContext().getFilesDir(), "codex/auth.json");
+            check(!auth.exists(), "Isolated test must not contain an account session");
+            try (FileOutputStream output = new FileOutputStream(auth)) { output.write("{}".getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+            runOnMainSync(() -> service.get().signOut());
+            waitFor(() -> !service.get().loading && service.get().canSignIn);
+            check(!auth.exists() && UsageSnapshot.load(getTargetContext()) == null,
+                    "Local sign-out must remove the test session and display cache");
+            runOnMainSync(() -> {
+                getTargetContext().getSharedPreferences("widget_state", 0).edit().putString("error", "").commit();
+                for (boolean compact : new boolean[]{false, true}) {
+                    FrameLayout host = new FrameLayout(getTargetContext());
+                    View widget = UsageWidget.views(getTargetContext(), compact, fixture).apply(getTargetContext(), host);
+                    host.addView(widget);
+                    renderImage(host, compact ? 180 : 280, compact ? 50 : 124,
+                            compact ? "widget-dual-compact-preview.png" : "widget-dual-preview.png");
+                    check(((TextView)widget.findViewById(R.id.widget_percent)).getText().toString().startsWith("20%"), "Five-hour percentage must render");
+                    check(((TextView)widget.findViewById(R.id.widget_second_percent)).getText().toString().startsWith("60%"), "Weekly percentage must render");
+                    View refresh = widget.findViewById(R.id.widget_refresh);
+                    int[] position = new int[2];
+                    refresh.getLocationInWindow(position);
+                    check(position[1] + refresh.getHeight() <= host.getHeight(), "Dual widget footer must fit");
+                    View updated = widget.findViewById(R.id.widget_updated);
+                    int top = updated.getTop();
+                    getTargetContext().getSharedPreferences("widget_state", 0).edit().putBoolean("loading", true).commit();
+                    UsageWidget.views(getTargetContext(), compact, fixture).reapply(getTargetContext(), widget);
+                    check(((TextView)updated).getText().toString().equals("Refreshing…") && updated.getTop() == top,
+                            "Dual refresh status must stay in the timestamp slot");
+                    getTargetContext().getSharedPreferences("widget_state", 0).edit().putBoolean("loading", false).commit();
+                }
+            });
+        } finally {
+            blocker.delete();
+            if (cache.isDirectory()) cache.delete();
+            runOnMainSync(() -> { if (service.get() != null) service.get().observe(null); getTargetContext().unbindService(connection); });
+        }
+    }
     private void checkSignOut() throws Exception {
         check(getTargetContext().getPackageName().endsWith(".checks"), "Logout test must use an isolated installation");
         java.util.concurrent.atomic.AtomicReference<UsageService> service = new java.util.concurrent.atomic.AtomicReference<>();
@@ -302,7 +396,7 @@ public final class UsageChecks extends Instrumentation {
             getTargetContext().bindService(intent, connection, android.content.Context.BIND_AUTO_CREATE);
         });
         try {
-            waitFor(() -> service.get() != null && service.get().canSignOut());
+            waitFor(() -> service.get() != null && !service.get().loading && service.get().canSignIn);
             UsageSnapshot fixture = UsageSnapshot.fromResponse(response(System.currentTimeMillis()), System.currentTimeMillis());
             fixture.save(getTargetContext());
             check(UsageSnapshot.load(getTargetContext()) != null, "Fixture cache must exist before logout");

@@ -131,9 +131,14 @@ final class UsageSnapshot {
         AtomicFile file = cacheFile(context);
         FileOutputStream output = null;
         try {
+            byte[] encoded = toJson().toString().getBytes(StandardCharsets.UTF_8);
             output = file.startWrite();
-            output.write(toJson().toString().getBytes(StandardCharsets.UTF_8));
+            output.write(encoded);
             file.finishWrite(output);
+            output = null;
+            // AtomicFile reports some sync/rename failures only through logging.
+            if (!java.util.Arrays.equals(encoded, file.readFully()))
+                throw new java.io.IOException("Display cache was not committed");
         } catch (Exception e) {
             if (output != null) file.failWrite(output);
             throw e;
