@@ -1,0 +1,32 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.example.codexusage'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.example.codexusage'
+        if (project.hasProperty('isolatedChecks')) applicationIdSuffix '.checks'
+        minSdk 26
+        targetSdk 36
+        versionCode 1
+        versionName '0.1'
+        testInstrumentationRunner 'com.example.codexusage.UsageChecks'
+        ndk {
+            abiFilters 'arm64-v8a'
+        }
+    }
+
+    sourceSets.main.jniLibs.srcDirs = [rootProject.file('.probe/packaged-native')]
+    packaging.jniLibs.useLegacyPackaging = true
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+apply from: rootProject.file('scripts/verify-native.gradle')
+apply from: rootProject.file('scripts/verify-notices.gradle')

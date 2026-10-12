@@ -1,0 +1,20 @@
+Codex Usage for Android
+Copyright 2026 Codex Usage for Android contributors
+
+Original project code is licensed under the Apache License, Version 2.0.
+Third-party components retain their respective licenses and copyright notices.
+See THIRD_PARTY_NOTICES.md and licenses/ for details.
+
+OpenAI Codex
+Copyright 2025 OpenAI
+
+The upstream Codex notice includes code derived from Ratatui, licensed under MIT:
+Copyright (c) 2016-2022 Florian Dehau
+Copyright (c) 2023-2025 The Ratatui Developers
+The original upstream NOTICE is preserved in licenses/OpenAI-Codex-NOTICE.txt.
+
+OpenSSL is Copyright The OpenSSL Project Authors and is licensed under Apache-2.0.
+
+OpenAI and Codex are trademarks of OpenAI. This application is unofficial and
+not affiliated with or endorsed by OpenAI. No trademark rights are granted by
+the license of this project.

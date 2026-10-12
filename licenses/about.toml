@@ -1,0 +1,8 @@
+# Prefer Apache-2.0 where a dependency offers a choice. Never select GPL alternatives.
+accepted = [
+    "Apache-2.0", "MIT", "BSD-3-Clause", "BSD-2-Clause", "ISC", "Unicode-3.0",
+    "Zlib", "MPL-2.0", "CC0-1.0", "MIT-0", "0BSD", "BSL-1.0",
+    "CDLA-Permissive-2.0", "Unlicense"
+]
+targets = ["aarch64-linux-android"]
+ignore-dev-dependencies = true

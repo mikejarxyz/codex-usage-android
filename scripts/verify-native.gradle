@@ -1,0 +1,48 @@
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
+// Gate APK/AAB builds on the actual packaged ELF files, including RELRO alignment.
+tasks.register('verifyNativePageSizes') {
+    def nativeFiles = fileTree(rootProject.file('.probe/packaged-native')) { include '**/*.so' }
+    inputs.files(nativeFiles)
+    doLast {
+        if (nativeFiles.empty) throw new GradleException('Native app-server missing. Run scripts/build-app-server-android.ps1 first.')
+        nativeFiles.each { binary ->
+            def bytes = binary.bytes
+            if (bytes.length < 64 || bytes[0] != 0x7f || bytes[1] != 69 || bytes[2] != 76
+                    || bytes[3] != 70 || bytes[4] != 2 || bytes[5] != 1) {
+                throw new GradleException("${binary.name}: expected a 64-bit little-endian ELF")
+            }
+            def elf = ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN)
+            long headers = elf.getLong(32)
+            int headerSize = Short.toUnsignedInt(elf.getShort(54))
+            int headerCount = Short.toUnsignedInt(elf.getShort(56))
+            if (headerSize < 56 || headerCount == 0 || headers < 64
+                    || headers + (long) headerSize * headerCount > bytes.length) {
+                throw new GradleException("${binary.name}: invalid ELF program headers")
+            }
+            int loads = 0
+            for (int i = 0; i < headerCount; i++) {
+                int position = Math.toIntExact(headers + (long) i * headerSize)
+                int type = elf.getInt(position)
+                long offset = elf.getLong(position + 8)
+                long address = elf.getLong(position + 16)
+                long memorySize = elf.getLong(position + 40)
+                long alignment = elf.getLong(position + 48)
+                if (type == 1) {
+                    loads++
+                    if (alignment < 16384 || (alignment & (alignment - 1)) != 0
+                            || offset % 16384 != address % 16384) {
+                        throw new GradleException("${binary.name}: LOAD segment is not 16 KB compatible; rebuild the native executable")
+                    }
+                }
+                if (type == 0x6474e552 && (address + memorySize) % 16384 != 0) {
+                    throw new GradleException("${binary.name}: RELRO end is not 16 KB aligned; rebuild with both Android linker flags")
+                }
+            }
+            if (loads == 0) throw new GradleException("${binary.name}: no ELF LOAD segments")
+            logger.lifecycle("${binary.parentFile.name}/${binary.name}: 16 KB LOAD and RELRO checks passed")
+        }
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'verifyNativePageSizes' }

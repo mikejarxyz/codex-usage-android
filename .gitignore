@@ -1,0 +1,37 @@
+.gradle/
+.idea/
+build/
+app/build/
+local.properties
+*.iml
+.probe/
+
+# Local diagnostic journal and account/session data
+DIAGNOSTICS.md
+diagnostic.json
+usage.json
+auth.json
+codex-home/
+*.log
+
+# Secrets and Android signing material
+.env
+.env.*
+!.env.example
+secrets/
+credentials/
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+keystore.properties
+signing.properties
+
+# Generated distribution artifacts and Python caches
+*.apk
+*.aab
+*.apks
+__pycache__/
+*.pyc

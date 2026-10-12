@@ -1,0 +1,16 @@
+<resources>
+    <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#F1F1F1</item>
+        <item name="android:colorBackground">#0F0F0F</item>
+        <item name="android:colorBackgroundFloating">#171717</item>
+        <item name="android:windowBackground">#0F0F0F</item>
+        <item name="android:textColorPrimary">#F1F1F1</item>
+        <item name="android:textColorSecondary">#A6A6A6</item>
+        <item name="android:colorControlHighlight">#33555555</item>
+        <item name="android:popupMenuStyle">@style/UsagePopupMenu</item>
+    </style>
+    <style name="UsagePopupMenu" parent="android:style/Widget.Material.PopupMenu">
+        <item name="android:popupBackground">@drawable/menu_background</item>
+        <item name="android:popupElevation">8dp</item>
+    </style>
+</resources>

@@ -1,0 +1,25 @@
+import groovy.json.JsonSlurper
+import java.security.MessageDigest
+
+tasks.register('verifyDependencyNotices') {
+    def inventory = rootProject.file('licenses/dependency-manifest.json')
+    def asset = file('src/main/assets/third_party_licenses.html')
+    inputs.files(inventory, asset, rootProject.file('LICENSE'), rootProject.file('NOTICE'))
+    doLast {
+        if (!inventory.isFile() || !asset.isFile()) throw new GradleException('Dependency notices missing. Run scripts/generate-notices.py.')
+        def manifest = new JsonSlurper().parse(inventory)
+        def sha256 = { input -> MessageDigest.getInstance('SHA-256').digest(input.bytes).encodeHex().toString() }
+        if (manifest.assetSha256 != sha256(asset)
+                || manifest.projectLicenseSha256 != sha256(rootProject.file('LICENSE'))
+                || manifest.projectNoticeSha256 != sha256(rootProject.file('NOTICE'))) {
+            throw new GradleException('License assets changed without regenerating notices.')
+        }
+        def lock = rootProject.file('.probe/codex/codex-rs/Cargo.lock')
+        if (lock.isFile() && manifest.cargoLockSha256 != sha256(lock)) {
+            throw new GradleException('Native lockfile changed without regenerating dependency notices.')
+        }
+        if (manifest.packages.isEmpty()) throw new GradleException('Dependency notice inventory is empty.')
+        logger.lifecycle("Dependency notices verified: ${manifest.packages.size()} packages")
+    }
+}
+tasks.named('preBuild').configure { dependsOn 'verifyDependencyNotices' }
