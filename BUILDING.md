@@ -71,5 +71,10 @@ hardware test.
 
 For permanent identity, private signing, and Play rollout, see [RELEASING.md](RELEASING.md).
 
+For checks against the non-debuggable signed release, add `-PreleaseChecks`
+and the private signing configuration when building `:app:assembleReleaseAndroidTest`.
+The test APK shares the release certificate. Use `-e compatibilityCheck true`
+on the 16 KB emulator; never run its synthetic-cache mode on a signed-in phone.
+
 After editing PRIVACY.md, run `python scripts/generate-privacy.py` to update the
 offline in-app copy. CI checks that both copies agree.

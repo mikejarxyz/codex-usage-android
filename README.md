@@ -1,7 +1,7 @@
 # Codex Usage for Android
 
 An **unofficial**, free, open-source Android app and home-screen widget for
-monitoring Codex usage limits. No ads or paid features. This project is in beta;
+monitoring Codex usage limits, published by getClear Digital. No ads or paid features. This project is in beta;
 it is not affiliated with or endorsed by OpenAI.
 
 ## Features

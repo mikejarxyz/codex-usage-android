@@ -1,8 +1,9 @@
 # Privacy
 
-Effective date: October 11, 2026.
+Effective date: October 12, 2026.
 
-Codex Usage for Android is an unofficial, free, open-source app maintained in
+Codex Usage for Android is an unofficial, free, open-source app published by
+getClear Digital and maintained in
 the [project repository](https://github.com/mikejarxyz/codex-usage-android).
 It has no advertising or developer-operated server. The app explicitly disables
 the bundled app-server's analytics and telemetry exporters.
@@ -46,11 +47,10 @@ storage access.
 
 ## Contact and changes
 
-For project questions, contact the maintainer through the
+For support or privacy questions, email
+[codex-usage@getclear.digital](mailto:codex-usage@getclear.digital).
+For public bug reports and project questions, use the
 [project's issue tracker](https://github.com/mikejarxyz/codex-usage-android/issues).
 Issues are public: never include credentials, account responses, or personal
 information. For a private security report, use GitHub's private vulnerability
 reporting feature if enabled. Policy changes will be recorded in this repository.
-
-Before a Play Store release, the publisher must add a suitable direct privacy
-contact and review this policy against the final distributed build.

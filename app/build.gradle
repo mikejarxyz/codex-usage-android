@@ -2,7 +2,7 @@ plugins {
     id 'com.android.application'
 }
 
-def releaseApplicationId = providers.gradleProperty('releaseApplicationId').orNull
+def releaseApplicationId = providers.gradleProperty('releaseApplicationId').orElse('digital.getclear.codexusage').get()
 def signingPath = providers.gradleProperty('releaseSigningFile').orNull
 def productionRelease = project.hasProperty('productionRelease')
 def privateSigning = new Properties()
@@ -17,6 +17,7 @@ if (signingPath != null) {
 android {
     namespace 'com.example.codexusage'
     compileSdk 36
+    if (project.hasProperty('releaseChecks')) testBuildType 'release'
 
     defaultConfig {
         applicationId 'com.example.codexusage'
@@ -24,7 +25,7 @@ android {
         minSdk 26
         targetSdk 36
         versionCode 1
-        versionName '0.1'
+        versionName '0.1.0-beta.1'
         testInstrumentationRunner 'com.example.codexusage.UsageChecks'
         ndk {
             abiFilters 'arm64-v8a'
@@ -38,6 +39,7 @@ android {
         if (signingPath != null) {
             release {
                 storeFile file(privateSigning.getProperty('storeFile'))
+                storeType privateSigning.getProperty('storeType', 'PKCS12')
                 storePassword privateSigning.getProperty('storePassword')
                 keyAlias privateSigning.getProperty('keyAlias')
                 keyPassword privateSigning.getProperty('keyPassword')

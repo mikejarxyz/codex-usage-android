@@ -40,7 +40,7 @@ public final class LicensesActivity extends Activity {
         content.getSettings().setBlockNetworkLoads(true);
         content.setWebViewClient(new WebViewClient() {
             @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
-                if ("https".equals(request.getUrl().getScheme())) {
+                if ("https".equals(request.getUrl().getScheme()) || "mailto".equals(request.getUrl().getScheme())) {
                     try { startActivity(new Intent(Intent.ACTION_VIEW, request.getUrl())); }
                     catch (ActivityNotFoundException ignored) { }
                 }

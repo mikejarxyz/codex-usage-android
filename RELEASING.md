@@ -2,31 +2,38 @@
 
 This is a beta release checklist, not a claim that the app is ready for Play.
 
-## Decisions needed from the publisher
+## Release identity and remaining decisions
 
-- Permanent application ID; suggested `io.github.mikejarxyz.codexusage`.
-  The existing development installation uses `com.example.codexusage`.
-- Play developer account, displayed developer identity, and a direct support/privacy email.
-- Upload-key ownership and secure backup. Let Play App Signing manage the Play
-  distribution key unless there is a specific reason to manage it yourself.
-- Final screenshots, launcher artwork, and review of OpenAI trademark use.
+- Publisher: **getClear Digital**. Release application ID: `digital.getclear.codexusage`.
+  The development installation retains `com.example.codexusage`.
+- Public support/privacy email: `codex-usage@getclear.digital` (confirmed operational).
+- Play developer account: not created. Organization identity/D-U-N-S lookup remains pending.
+- Signing: Play App Signing with a separate private upload key. The local key
+  has been generated; the owner must confirm a secure backup before distribution.
+- Final screenshots and review of OpenAI trademark use. The launcher icon is an
+  original usage-bar mark; the header/widget currently use the OpenAI Blossom.
+  OpenAI's guidelines prohibit it as primary branding, so the release presentation
+  needs review before a public store submission: https://openai.com/brand/.
 
 ## Private signing
 
-Create an upload key with Android Studio's signed-bundle wizard. Keep the
-keystore and passwords outside the repository and back them up securely.
+Keep the existing upload key for subsequent builds; do not generate a new one
+for each release. A new publisher can create one with Android Studio's
+signed-bundle wizard. Keep the keystore and passwords outside the repository and back them up securely.
 Create an external `signing.properties` containing `storeFile` (absolute path),
-`storePassword`, `keyAlias`, and `keyPassword`. Do not paste its contents into
-issues or chat; do not pass passwords on command lines.
+`storeType` (`PKCS12` for the prepared key), `storePassword`, `keyAlias`, and
+`keyPassword`. Do not paste its contents into issues or chat; do not pass passwords on command lines.
 
-With that private file and the approved identity, build:
+With the private signing file, build the configured getClear identity:
 
 ```text
-./gradlew :app:bundleRelease -PproductionRelease -PreleaseApplicationId=io.github.mikejarxyz.codexusage -PreleaseSigningFile=/absolute/private/signing.properties
+./gradlew :app:assembleRelease :app:bundleRelease -PproductionRelease -PreleaseSigningFile=/absolute/private/signing.properties
 ```
 
 The production flag rejects a missing signing configuration or placeholder
-identity. Ordinary CI builds remain unsigned and cannot be uploaded to Play.
+identity. Release builds default to `digital.getclear.codexusage`; a deliberate
+`-PreleaseApplicationId` override is available for independent forks. Ordinary
+CI builds remain unsigned and cannot be uploaded to Play.
 Debug builds retain the development application ID. A production ID installs
 as a separate app and requires its own sign-in.
 
@@ -50,7 +57,7 @@ progress bars, reset times, and the last successful update. See available usage
 resets and their expiry dates when OpenAI provides them. Resets are read-only.
 
 Sign in with ChatGPT through your browser. Authentication stays in private app
-storage; requests go directly to OpenAI. No ads, paid features, analytics, or
+storage; requests go directly to OpenAI. Published by getClear Digital. No ads, paid features, analytics, or
 developer-operated backend. The source code and dependency licenses are public.
 
 The widget supports manual refresh and scheduled background refresh. Android's
@@ -63,12 +70,13 @@ account. Upstream authentication and usage endpoints may change.
 
 Publish a stable, publicly accessible privacy-policy page and add its URL to
 Play Console. The in-app Privacy menu contains a local copy. Before release,
-replace the draft contact instructions with the publisher's direct email in
-both copies. Do not claim that no data leaves the device: OpenAI authentication
+verify the published contact/policy against the distributed build. Do not claim
+that no data leaves the device: OpenAI authentication
 and quota requests are network transfers, even without a developer backend.
 
 `python scripts/generate-privacy.py` regenerates the in-app asset and
-`docs/privacy/index.html`. After the policy/contact review, GitHub Pages can serve
+`docs/privacy/index.html`. The intended policy host is getclear.digital; its
+final path/deployment is pending. Alternatively, GitHub Pages can serve
 the repository's `main` branch `/docs` folder. The expected URL is
 `https://mikejarxyz.github.io/codex-usage-android/privacy/`; verify it is live before
 using it in Play Console. Pages hosting has not been enabled by this build setup.

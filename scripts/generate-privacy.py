@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--check", action="store_true")
 args = parser.parse_args()
 text = html.escape((root / "PRIVACY.md").read_text(encoding="utf-8"))
-text = re.sub(r"\[([^\]]+)\]\((https://[^)]+)\)", r'<a href="\2">\1</a>', text)
+text = re.sub(r"\[([^\]]+)\]\(((?:https://|mailto:)[^)]+)\)", r'<a href="\2">\1</a>', text)
 paragraphs = []
 for paragraph in text.split("\n\n"):
     if paragraph.startswith("# "):
