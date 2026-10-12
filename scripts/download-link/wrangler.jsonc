@@ -1,0 +1,20 @@
+{
+    "name": "codex-usage-download",
+    "main": "worker.js",
+    "compatibility_date": "2026-10-12",
+    "workers_dev": false,
+    "preview_urls": false,
+    "routes": [
+        {
+            "pattern": "cdn.getclear.digital/codex-usage/download.apk",
+            "zone_name": "getclear.digital"
+        }
+    ],
+    "vars": {
+        "LATEST_APK_URL": "https://cdn.getclear.digital/codex-usage/beta/0.1.0-beta.2/codex-usage-0.1.0-beta.2-arm64.apk"
+    },
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+    }
+}

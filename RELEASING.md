@@ -43,6 +43,22 @@ using Play internal testing before moving to closed or production tracks.
 For GitHub APK distribution, choose a stable signing identity deliberately;
 Play-distributed APKs use Play's app-signing certificate, not the upload key.
 
+## Stable beta download
+
+Share `https://cdn.getclear.digital/codex-usage/download.apk`. A small Cloudflare
+Worker redirects it to the current versioned APK with HTTP 302 and
+`Cache-Control: no-store`. Keep versioned APKs and their checksums unchanged.
+
+For each beta, upload and verify the new signed APK first, update
+`LATEST_APK_URL` in `scripts/download-link/wrangler.jsonc`, then run:
+
+```text
+wrangler deploy --config scripts/download-link/wrangler.jsonc
+```
+
+Verify both the redirect destination and the downloaded APK's checksum before
+announcing the update. Roll back by restoring the previous target and deploying.
+
 ## Store listing draft
 
 Name: **Codex Usage**
