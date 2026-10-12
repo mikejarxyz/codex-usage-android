@@ -44,6 +44,8 @@ jobs:
           java-version: '17'
       - name: Audit publication and wrapper
         run: python3 scripts/audit-publication.py
+      - name: Check bounded ELF verification and alignment rejection
+        run: python3 scripts/test-native-verifier.py
       - name: Install Android toolchain
         run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "ndk;27.0.12077973"'
       - uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
