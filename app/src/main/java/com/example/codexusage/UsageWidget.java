@@ -10,9 +10,6 @@ import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.RemoteViews;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 
 public final class UsageWidget extends AppWidgetProvider {
     private static final String REFRESH_WIDGET = "com.example.codexusage.REFRESH_WIDGET";
@@ -78,8 +75,7 @@ public final class UsageWidget extends AppWidgetProvider {
             views.setProgressBar(R.id.widget_second_progress, 1000, (int)Math.round(second.remaining() * 10), false);
         }
         String updated = snapshot == null ? "Open app to sign in" : "Updated "
-                + new SimpleDateFormat(System.currentTimeMillis() - snapshot.updatedAt >= 86_400_000
-                        ? "MMM d, HH:mm" : "HH:mm:ss", Locale.getDefault()).format(new Date(snapshot.updatedAt));
+                + UsageSnapshot.time(snapshot.updatedAt);
         views.setTextViewText(R.id.widget_updated, loading ? "Refreshing…"
                 : !error.isEmpty() ? "Refresh failed · retry" : updated);
         views.setViewVisibility(R.id.widget_resets, snapshot != null && snapshot.availableResets != null

@@ -7,7 +7,7 @@ import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
-import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Date;
@@ -107,7 +107,7 @@ final class UsageSnapshot {
     }
 
     static String time(long millis) {
-        return DateFormat.getTimeInstance(DateFormat.MEDIUM).format(new Date(millis));
+        return new SimpleDateFormat("h:mm a", Locale.US).format(new Date(millis));
     }
     static String expiry(long seconds) {
         return new java.text.SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
