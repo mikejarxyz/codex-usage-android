@@ -28,8 +28,9 @@ $buildEnvironment = @{
     AR_aarch64_linux_android = "$ndkBin\llvm-ar.exe"
     AARCH64_LINUX_ANDROID_OPENSSL_DIR = $opensslRoot
     AARCH64_LINUX_ANDROID_OPENSSL_STATIC = '1'
-    CARGO_PROFILE_DEV_DEBUG = '0'
-    CARGO_PROFILE_DEV_STRIP = 'debuginfo'
+    CARGO_PROFILE_RELEASE_OPT_LEVEL = 's'
+    CARGO_PROFILE_RELEASE_DEBUG = '0'
+    CARGO_PROFILE_RELEASE_STRIP = 'symbols'
 }
 $savedEnvironment = @{}
 try {
@@ -41,7 +42,7 @@ try {
     try {
         # Link the final executable for both 4 KB and 16 KB Android kernels.
         # Apply final-link flags without invalidating every already-built dependency.
-        & cargo +1.98.0 rustc --locked -p codex-app-server --bin codex-app-server `
+        & cargo +1.98.0 rustc --release --locked -p codex-app-server --bin codex-app-server `
             --target aarch64-linux-android -j $Jobs -- `
             -C link-arg=-Wl,-z,max-page-size=16384 `
             -C link-arg=-Wl,-z,common-page-size=16384
@@ -49,7 +50,7 @@ try {
     } finally {
         Pop-Location
     }
-    $binary = Join-Path $sourceRoot 'target\aarch64-linux-android\debug\codex-app-server'
+    $binary = Join-Path $sourceRoot 'target\aarch64-linux-android\release\codex-app-server'
     $packagedDirectory = Join-Path $projectRoot '.probe\packaged-native\arm64-v8a'
     New-Item -ItemType Directory -Force -Path $packagedDirectory | Out-Null
     Copy-Item -LiteralPath $binary -Destination "$packagedDirectory\libcodex_app_server.so"

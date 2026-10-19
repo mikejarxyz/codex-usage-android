@@ -11,7 +11,7 @@
         }
     ],
     "vars": {
-        "LATEST_APK_URL": "https://cdn.getclear.digital/codex-usage/beta/0.1.0-beta.3/codex-usage-0.1.0-beta.3-arm64.apk"
+        "LATEST_APK_URL": "https://cdn.getclear.digital/codex-usage/beta/0.1.0-beta.4/codex-usage-0.1.0-beta.4-arm64.apk"
     },
     "observability": {
         "enabled": true,

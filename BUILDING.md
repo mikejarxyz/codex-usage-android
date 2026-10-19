@@ -34,6 +34,12 @@ On Windows with prepared native dependencies:
    Both 16 KB linker flags are applied to the final executable.
 4. Regenerate dependency notices as described in `licenses/README.md`.
 
+Both native build helpers use the release profile with size optimization (`s`),
+ThinLTO, no debug information, and stripped symbols. An Android release build
+alone does not optimize a previously prepared native binary; rebuild it with
+the helper before packaging. Android retains the compressed APK and extracts
+the native executable, so installed storage exceeds the APK download size.
+
 With the Android SDK and Java environment configured, run:
 
 ```text
@@ -57,6 +63,18 @@ The test runner is `com.example.codexusage.UsageChecks`. Run its ordinary mode o
 a development phone already signed in; it checks real quota reads and a scheduled
 background job. It briefly ages only the sanitized display cache and restores it
 if the check fails. It does not export or replace auth credentials.
+
+`-e schedulingPolicyCheck true` checks refresh timing, cache recovery eligibility,
+clock rollback, and plugin-cache cleanup (including symlink escapes) without
+network requests. `-e backgroundStatusCheck true`
+reads cached update/attempt timestamps, installed storage sizes, and the last 32 background diagnostic
+events; it does not launch the activity or request a refresh. Run this inspection
+only while the job is idle, because starting instrumentation restarts the target
+app process. Events contain
+fixed outcome labels, timestamps, and Android stop-reason codes, never account
+responses or credentials. The history is in private app storage and is removed
+by clearing app storage or uninstalling. Use the correctly signed test APK for
+the installation being inspected.
 
 `-PisolatedChecks` builds a separate `com.example.codexusage.checks` installation.
 Run instrumentation with `-e signOutCheck true` for official logout, or

@@ -9,6 +9,7 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStreamReader;
+import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
@@ -68,8 +69,11 @@ final class AppServerClient {
                     publish("Could not create private auth storage.");
                     return;
                 }
+                try { clearUnusedPluginCaches(home); }
+                catch (IOException ignored) { diagnostic.put("pluginCacheCleanupFailed", true); }
                 ProcessBuilder builder = new ProcessBuilder(binary.getAbsolutePath(),
                         "--listen", "stdio://", "-c", "cli_auth_credentials_store=\"file\"",
+                        "-c", "features.plugins=false", "-c", "features.remote_plugin=false",
                         "-c", "analytics.enabled=false", "-c", "otel.exporter=\"none\"",
                         "-c", "otel.trace_exporter=\"none\"", "-c", "otel.metrics_exporter=\"none\"");
                 builder.directory(context.getFilesDir());
@@ -105,6 +109,30 @@ final class AppServerClient {
                 publish("App-server startup failed (" + e.getClass().getSimpleName() + ").");
             }
         });
+    }
+
+    // These are generated downloads, unused by account/quota reads. Never remove
+    // credentials or follow a cache path outside this app's private Codex home.
+    static void clearUnusedPluginCaches(File home) throws IOException {
+        String root = home.getCanonicalPath() + File.separator;
+        for (String relative : new String[]{"plugins/cache", "cache/remote_plugin_catalog"}) {
+            File cache = new File(home, relative);
+            if (!cache.getCanonicalPath().startsWith(root)) throw new IOException("Cache path escaped private home");
+            if (!java.nio.file.Files.exists(cache.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
+            java.nio.file.Files.walkFileTree(cache.toPath(), new java.nio.file.SimpleFileVisitor<java.nio.file.Path>() {
+                @Override public java.nio.file.FileVisitResult visitFile(java.nio.file.Path path,
+                        java.nio.file.attribute.BasicFileAttributes attributes) throws IOException {
+                    java.nio.file.Files.delete(path);
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+                @Override public java.nio.file.FileVisitResult postVisitDirectory(java.nio.file.Path path,
+                        IOException failure) throws IOException {
+                    if (failure != null) throw failure;
+                    java.nio.file.Files.delete(path);
+                    return java.nio.file.FileVisitResult.CONTINUE;
+                }
+            });
+        }
     }
 
     synchronized void signIn(boolean deviceCode) {

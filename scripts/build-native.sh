@@ -67,13 +67,14 @@ rustup target add aarch64-linux-android --toolchain "$task_rust"
   export AR_aarch64_linux_android="$task_tools/llvm-ar"
   export AARCH64_LINUX_ANDROID_OPENSSL_DIR="$task_openssl"
   export AARCH64_LINUX_ANDROID_OPENSSL_STATIC=1
-  export CARGO_PROFILE_DEV_DEBUG=0
-  export CARGO_PROFILE_DEV_STRIP=debuginfo
-  cargo +"$task_rust" rustc --locked -p codex-app-server --bin codex-app-server \
+  export CARGO_PROFILE_RELEASE_OPT_LEVEL=s
+  export CARGO_PROFILE_RELEASE_DEBUG=0
+  export CARGO_PROFILE_RELEASE_STRIP=symbols
+  cargo +"$task_rust" rustc --release --locked -p codex-app-server --bin codex-app-server \
     --target aarch64-linux-android -j "$task_jobs" -- \
     -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384
 )
 mkdir -p "$task_work/packaged-native/arm64-v8a"
-cp "$task_work/codex/codex-rs/target/aarch64-linux-android/debug/codex-app-server" \
+cp "$task_work/codex/codex-rs/target/aarch64-linux-android/release/codex-app-server" \
   "$task_work/packaged-native/arm64-v8a/libcodex_app_server.so"
 echo 'Native ARM64 executable prepared; regenerate notices before packaging.'

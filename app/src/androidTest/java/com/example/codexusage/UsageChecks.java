@@ -17,6 +17,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 import java.io.File;
 import java.io.FileOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 
 /** Device checks for quota semantics and the real RemoteViews layout, without auth payloads. */
 public final class UsageChecks extends Instrumentation {
@@ -26,6 +29,8 @@ public final class UsageChecks extends Instrumentation {
     private boolean licensesCheck;
     private boolean hardeningCheck;
     private boolean refreshLayoutCheck;
+    private boolean schedulingPolicyCheck;
+    private boolean backgroundStatusCheck;
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         signOutCheck = arguments != null && "true".equals(arguments.getString("signOutCheck"));
@@ -33,12 +38,49 @@ public final class UsageChecks extends Instrumentation {
         licensesCheck = arguments != null && "true".equals(arguments.getString("licensesCheck"));
         hardeningCheck = arguments != null && "true".equals(arguments.getString("hardeningCheck"));
         refreshLayoutCheck = arguments != null && "true".equals(arguments.getString("refreshLayoutCheck"));
+        schedulingPolicyCheck = arguments != null && "true".equals(arguments.getString("schedulingPolicyCheck"));
+        backgroundStatusCheck = arguments != null && "true".equals(arguments.getString("backgroundStatusCheck"));
         start();
     }
     @Override public void onStart() {
         Bundle result = new Bundle();
         int resultCode = Activity.RESULT_OK;
         try {
+            if (backgroundStatusCheck) {
+                UsageSnapshot saved = UsageSnapshot.load(getTargetContext());
+                android.content.SharedPreferences state = getTargetContext().getSharedPreferences("widget_state", 0);
+                JSONObject status = new JSONObject().put("now", System.currentTimeMillis())
+                        .put("updatedAt", saved == null ? JSONObject.NULL : saved.updatedAt)
+                        .put("loading", state.getBoolean("loading", false))
+                        .put("autoAttemptAt", state.getLong("autoAttemptAt", 0))
+                        .put("history", new JSONArray(getTargetContext().getSharedPreferences(
+                                "widget_refresh_diagnostics", 0).getString("history", "[]")));
+                android.app.usage.StorageStats storage = getTargetContext().getSystemService(
+                        android.app.usage.StorageStatsManager.class).queryStatsForUid(
+                                android.os.storage.StorageManager.UUID_DEFAULT, android.os.Process.myUid());
+                status.put("appBytes", storage.getAppBytes()).put("dataBytes", storage.getDataBytes())
+                        .put("cacheBytes", storage.getCacheBytes());
+                JSONArray largestFiles = new JSONArray();
+                java.nio.file.Path data = getTargetContext().getDataDir().toPath();
+                try (java.util.stream.Stream<java.nio.file.Path> paths = java.nio.file.Files.walk(data)) {
+                    paths.filter(path -> java.nio.file.Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS))
+                            .sorted(java.util.Comparator.comparingLong((java.nio.file.Path path) -> path.toFile().length()).reversed())
+                            .limit(8).forEach(path -> {
+                                try { largestFiles.put(new JSONObject().put("path", data.relativize(path).toString())
+                                        .put("bytes", path.toFile().length())); }
+                                catch (org.json.JSONException e) { throw new AssertionError(e); }
+                            });
+                }
+                status.put("largestPrivateFiles", largestFiles);
+                result.putString("stream", status.toString() + "\n");
+                return;
+            }
+            checkSchedulingPolicy();
+            if (schedulingPolicyCheck) {
+                checkUnusedPluginCacheCleanup();
+                result.putString("stream", "Scheduling jitter, cooldown, cache recovery eligibility, clock rollback, and plugin-cache cleanup safety checks passed.\n");
+                return;
+            }
             if (refreshLayoutCheck) {
                 checkRefreshLayout();
                 File preview = new File(getTargetContext().getCacheDir(), "refresh-pressed-preview.png");
@@ -67,6 +109,7 @@ public final class UsageChecks extends Instrumentation {
                 result.putString("stream", "Isolated official logout, cache clearing, and signed-out widget checks passed.\n");
                 return;
             }
+            checkUnusedPluginCacheCleanup();
             long now = 1_800_000_000_000L;
             JSONObject response = response(now);
             UsageSnapshot quota = UsageSnapshot.fromResponse(response, now);
@@ -74,10 +117,6 @@ public final class UsageChecks extends Instrumentation {
             check(quota.widgetWindow().minutes == 300, "Widget must show most depleted window");
             check(quota.availableResets == null, "Missing reset data must not mean zero");
             check(quota.updatedAt == now, "Successful fetch time must be recorded");
-            check(!UsageRefreshJob.due(quota, 0, now), "Fresh data must skip automatic refresh");
-            check(UsageRefreshJob.due(quota, 0, now + UsageRefreshJob.INTERVAL), "Stale data must refresh automatically");
-            check(!UsageRefreshJob.due(quota, now, now + 60_000), "Automatic attempts must be throttled");
-            check(!UsageRefreshJob.due(null, 0, now), "Signed-out widgets must not poll");
 
             JSONObject credits = new JSONObject().put("availableCount", 3).put("credits", JSONObject.NULL);
             response.put("rateLimitResetCredits", credits);
@@ -173,7 +212,7 @@ public final class UsageChecks extends Instrumentation {
             while ((actual == null || actual.updatedAt <= beforeRefresh) && System.currentTimeMillis() < deadline);
             check(actual != null && actual.updatedAt > beforeRefresh, "Widget refresh must fetch a new real quota response");
             checkAutomaticRefresh(activity);
-            result.putString("stream", "Quota/layout checks, manual refresh, automatic background job, and refresh cooldown passed.\n");
+            result.putString("stream", "Quota/layout checks, manual refresh, background job, missing-cache recovery, diagnostics, and cooldown passed.\n");
         } catch (Throwable failure) {
             result.putString("stream", "Usage checks failed: " + failure.getClass().getSimpleName()
                     + ": " + failure.getMessage() + "\n");
@@ -182,6 +221,56 @@ public final class UsageChecks extends Instrumentation {
             getUiAutomation().dropShellPermissionIdentity();
             if (widgetHost != null) { widgetHost.stopListening(); widgetHost.deleteHost(); }
             finish(resultCode, result);
+        }
+    }
+    private void checkSchedulingPolicy() throws Exception {
+        long now = 1_800_000_000_000L;
+        UsageSnapshot quota = UsageSnapshot.fromResponse(response(now), now);
+        check(!UsageRefreshJob.due(quota, true, 0, now), "Fresh data must skip automatic refresh");
+        // The prior request took five seconds; Android invokes the next job 15 minutes after its start.
+        check(UsageRefreshJob.due(quota, true, now - 5_000, now + UsageRefreshJob.INTERVAL - 5_000),
+                "A response completing after job start must not cause the next period to be skipped");
+        check(UsageRefreshJob.due(quota, true, now, now + UsageRefreshJob.MIN_REFRESH_GAP),
+                "Refresh must be allowed at the cooldown boundary");
+        check(!UsageRefreshJob.due(quota, true, 0, now + UsageRefreshJob.MIN_REFRESH_GAP - 1),
+                "Recent manual refresh must avoid duplicate reads");
+        check(!UsageRefreshJob.due(null, true, now - 60_000, now),
+                "A failed request without cached data must still respect cooldown");
+        check(UsageRefreshJob.due(null, true, 0, now), "Saved sign-in must recover a missing display cache");
+        check(!UsageRefreshJob.due(null, false, 0, now), "Signed-out widgets must not poll");
+        check(UsageRefreshJob.due(quota, true, now, now - 60_000),
+                "Clock rollback must not freeze automatic updates");
+    }
+    private void checkUnusedPluginCacheCleanup() throws Exception {
+        Path base = Files.createTempDirectory(getTargetContext().getCacheDir().toPath(), "plugin-cache-check");
+        try {
+            Path home = Files.createDirectories(base.resolve("home"));
+            Path plugins = Files.createDirectories(home.resolve("plugins/cache/nested"));
+            Path catalog = Files.createDirectories(home.resolve("cache/remote_plugin_catalog"));
+            Path outside = Files.createDirectories(base.resolve("outside/cache"));
+            Path sentinel = Files.write(outside.resolve("keep"), new byte[]{1});
+            Path auth = Files.write(home.resolve("auth.json"), new byte[]{2});
+            Path quota = Files.write(base.resolve("usage.json"), new byte[]{3});
+            Files.write(plugins.resolve("download"), new byte[]{4});
+            Files.write(catalog.resolve("catalog.json"), new byte[]{5});
+            Files.createSymbolicLink(plugins.resolve("outside-link"), outside);
+            AppServerClient.clearUnusedPluginCaches(home.toFile());
+            check(!Files.exists(home.resolve("plugins/cache")) && !Files.exists(catalog),
+                    "Unused plugin downloads and catalog must be removed");
+            check(Files.readAllBytes(auth)[0] == 2 && Files.readAllBytes(quota)[0] == 3
+                            && Files.readAllBytes(sentinel)[0] == 1,
+                    "Cleanup must preserve sign-in, quota, and symlink targets");
+            Files.delete(home.resolve("plugins"));
+            Files.createSymbolicLink(home.resolve("plugins"), outside.getParent());
+            boolean refused = false;
+            try { AppServerClient.clearUnusedPluginCaches(home.toFile()); }
+            catch (java.io.IOException expected) { refused = true; }
+            check(refused && Files.exists(sentinel), "Cleanup must reject a parent symlink escaping private home");
+        } finally {
+            try (java.util.stream.Stream<Path> paths = Files.walk(base)) {
+                for (Path path : paths.sorted(Comparator.reverseOrder()).collect(java.util.stream.Collectors.toList()))
+                    Files.delete(path);
+            }
         }
     }
     private void checkRefreshLayout() throws Exception {
@@ -336,8 +425,9 @@ public final class UsageChecks extends Instrumentation {
     private void checkAutomaticRefresh(Activity activity) throws Exception {
         android.app.job.JobScheduler scheduler = getTargetContext().getSystemService(android.app.job.JobScheduler.class);
         android.app.job.JobInfo job = scheduler.getPendingJob(UsageRefreshJob.JOB_ID);
-        check(job != null && job.isPersisted() && job.getIntervalMillis() == UsageRefreshJob.INTERVAL,
-                "Installed widgets must have a persistent 15-minute job");
+        check(job != null && job.isPersisted() && job.getIntervalMillis() == UsageRefreshJob.INTERVAL
+                        && job.getFlexMillis() == UsageRefreshJob.FLEX,
+                "Installed widgets must have a persistent 15-minute job with a five-minute scheduling window");
         runOnMainSync(activity::finish);
         Thread.sleep(1000);
         UsageSnapshot original = UsageSnapshot.load(getTargetContext());
@@ -351,7 +441,7 @@ public final class UsageChecks extends Instrumentation {
             check(shell(command).contains("Running job"), "Android must execute the scheduled refresh job");
             waitFor(() -> {
                 UsageSnapshot fresh = UsageSnapshot.load(getTargetContext());
-                return fresh != null && fresh.updatedAt > before;
+                return fresh != null && fresh.updatedAt > before && "refresh_succeeded".equals(lastBackgroundOutcome());
             });
             long attempt = getTargetContext().getSharedPreferences("widget_state", 0).getLong("autoAttemptAt", 0);
             check(attempt > 0, "Background job must record an automatic attempt");
@@ -359,13 +449,31 @@ public final class UsageChecks extends Instrumentation {
             Thread.sleep(1000);
             check(getTargetContext().getSharedPreferences("widget_state", 0).getLong("autoAttemptAt", 0) == attempt,
                     "Repeated jobs must skip recent data instead of fetching again");
+            check("skip_fresh".equals(lastBackgroundOutcome()), "Skipped jobs must explain why no refresh happened");
+            UsageSnapshot latest = UsageSnapshot.load(getTargetContext());
+            UsageSnapshot.clear(getTargetContext());
+            getTargetContext().getSharedPreferences("widget_state", 0).edit().remove("autoAttemptAt").commit();
+            check(shell(command).contains("Running job"), "Android must run cache recovery");
+            waitFor(() -> {
+                UsageSnapshot recovered = UsageSnapshot.load(getTargetContext());
+                return recovered != null && recovered.updatedAt > latest.updatedAt
+                        && "refresh_succeeded".equals(lastBackgroundOutcome());
+            });
         } finally {
             UsageSnapshot remaining = UsageSnapshot.load(getTargetContext());
-            if (remaining != null && remaining.updatedAt == aged) { original.updatedAt = before; original.save(getTargetContext()); }
+            if (remaining == null || remaining.updatedAt == aged) { original.updatedAt = before; original.save(getTargetContext()); }
             // Forced runs advance the periodic window; restore the normal cadence after testing.
             UsageRefreshJob.cancel(getTargetContext());
             UsageRefreshJob.schedule(getTargetContext());
         }
+    }
+    private String lastBackgroundOutcome() {
+        try {
+            JSONArray events = new JSONArray(getTargetContext().getSharedPreferences(
+                    "widget_refresh_diagnostics", 0).getString("history", "[]"));
+            check(events.length() <= 32, "Background history must remain bounded");
+            return events.length() == 0 ? "" : events.getJSONObject(events.length() - 1).getString("outcome");
+        } catch (Exception e) { throw new AssertionError("Could not read background diagnostics", e); }
     }
     private String shell(String command) throws Exception {
         try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(

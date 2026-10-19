@@ -4,6 +4,9 @@ An **unofficial**, free, open-source Android app and home-screen widget for
 monitoring Codex usage limits, published by getClear Digital. No ads or paid features. This project is in beta;
 it is not affiliated with or endorsed by OpenAI.
 
+[Download the latest ARM64 beta](https://cdn.getclear.digital/codex-usage/download.apk).
+Install updates over the existing app to keep your sign-in and widget.
+
 ## Features
 
 - Remaining quota, progress bars, and reset times for the returned usage windows.
@@ -15,11 +18,16 @@ Account authentication stays in private app storage. The widget cache contains
 only displayable quota data, not credentials. Android backups are disabled.
 The app has no developer-operated backend or advertising SDK. The bundled
 app-server's analytics and telemetry exporters are explicitly disabled.
+Plugin syncing is also disabled; unused downloaded plugin bundles and catalog
+caches from earlier builds are removed at server startup.
 Sign-in and quota requests communicate with OpenAI; this is not an offline app.
 
 Android schedules automatic refresh about every 15 minutes while a widget is
-installed. Battery/idle policies can delay it. Recent data and recent automatic
-attempts are skipped; removing the last widget cancels the schedule. Failed
+installed, within a five-minute scheduling window. Battery/idle policies can
+delay it. Data and automatic attempts from
+the last five minutes are skipped to avoid duplicate reads without losing a
+whole scheduled period to timing jitter. A saved sign-in can recover a missing
+display cache; removing the last widget cancels the schedule. Failed
 refreshes preserve the last successful values and timestamp. The widget shows both five-hour and weekly windows when returned, with a
 compact two-column layout at its smallest size.
 
