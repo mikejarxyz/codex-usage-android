@@ -58,6 +58,9 @@ wrangler deploy --config scripts/download-link/wrangler.jsonc
 
 Verify both the redirect destination and the downloaded APK's checksum before
 announcing the update. Roll back by restoring the previous target and deploying.
+Verify new versioned URLs only after uploading; the CDN can cache missing-file
+responses. A checksum query parameter on `LATEST_APK_URL` provides a fresh cache
+key while keeping the shared download address unchanged.
 
 ## Store listing draft
 
