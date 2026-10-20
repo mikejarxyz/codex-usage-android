@@ -32,6 +32,10 @@ refreshes preserve the last successful values and timestamp. The widget shows bo
 stacked layout with local cycle reset dates and times. New widgets default to
 two launcher rows; a compact two-column layout remains for the shortest slots.
 Existing one-row widgets can be resized taller to show the stacked layout.
+Accounts with only one returned limit use a larger single-bar layout with its
+cycle reset time, including in a wide one-row widget. Layout selection depends
+on the returned limits and available space, rather than assuming every account
+has a five-hour limit.
 
 ## Build and compatibility
 

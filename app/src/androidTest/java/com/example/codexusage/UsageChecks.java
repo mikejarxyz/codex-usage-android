@@ -80,6 +80,9 @@ public final class UsageChecks extends Instrumentation {
             checkSchedulingPolicy();
             if (widgetLayoutCheck) {
                 checkWidgetLayouts();
+                result.putString("singlePreview", android.util.Base64.encodeToString(
+                        Files.readAllBytes(new File(getTargetContext().getCacheDir(), "widget-weekly-preview.png").toPath()),
+                        android.util.Base64.NO_WRAP));
                 result.putString("stream", "Responsive widget resizing, cycle dates, reset credits, past reset times, and large-text bounds passed.\n");
                 return;
             }
@@ -257,6 +260,14 @@ public final class UsageChecks extends Instrumentation {
         fixture.windows.add(new UsageSnapshot.Window(3, 300, now / 1000 - 3600));
         fixture.windows.add(new UsageSnapshot.Window(0, 10080, now / 1000 + 3 * 86400));
         fixture.availableResets = 3;
+        JSONObject weeklyResponse = response(now);
+        weeklyResponse.getJSONObject("rateLimits").put("primary", JSONObject.NULL)
+                .put("secondary", window(0, 10080, now));
+        UsageSnapshot weeklyOnly = UsageSnapshot.fromResponse(weeklyResponse, now);
+        weeklyResponse.getJSONObject("rateLimits").put("primary", window(0, 10080, now))
+                .put("secondary", JSONObject.NULL);
+        check(UsageSnapshot.fromResponse(weeklyResponse, now).windows.get(0).minutes == 10080,
+                "Weekly-only accounts must work in either response slot");
         check(!fixture.windows.get(0).resetLabel().contains("due"), "Past resets must not display a due state");
         java.util.TimeZone originalZone = java.util.TimeZone.getDefault();
         try {
@@ -325,9 +336,57 @@ public final class UsageChecks extends Instrumentation {
                     renderImage(host, 320, 260, "widget-large-text-preview.png");
                 }
             }
-            UsageSnapshot single = new UsageSnapshot();
-            single.windows.add(fixture.windows.get(0));
-            single.updatedAt = now;
+            UsageSnapshot single = weeklyOnly;
+            check(single.windows.size() == 1 && single.windows.get(0).minutes == 10080,
+                    "Absent 5-hour limits must produce a weekly-only widget");
+            single.availableResets = 3;
+            for (float fontScale : new float[]{1f, 1.3f, 1.5f}) {
+                android.content.Context singleContext = widgetLayoutContext(fontScale);
+                AppWidgetHostView singleHost = new AppWidgetHostView(singleContext);
+                singleHost.setAppWidget(0, info);
+                singleHost.setPadding(0, 0, 0, 0);
+                singleHost.updateAppWidget(UsageWidget.responsiveViews(singleContext, options, single));
+                for (int width : new int[]{374, 180, 280}) {
+                    int height = (int)Math.ceil(UsageWidget.contentHeight(singleContext, width < 240, single));
+                    renderImage(singleHost, width, height, "widget-single-check.png");
+                    check(singleHost.findViewById(R.id.widget_cycle_reset) != null,
+                            "One-limit widgets must show reset dates without requiring two-limit height");
+                    check(singleHost.findViewById(R.id.widget_second_progress) == null,
+                            "Weekly-only accounts must not show a 5-hour bar");
+                    check(((TextView)singleHost.findViewById(R.id.widget_limit_label)).getText().toString()
+                                    .equals(width < 240 || fontScale > 1.1f ? "Week" : "Weekly limit"),
+                            "The only limit must be identified from its actual duration");
+                    TextView percentView = singleHost.findViewById(R.id.widget_percent);
+                    float expectedSize = android.util.TypedValue.applyDimension(android.util.TypedValue.COMPLEX_UNIT_SP,
+                            24, singleContext.getResources().getDisplayMetrics());
+                    check(Math.abs(percentView.getTextSize() - expectedSize) <= 1,
+                            "Single-limit widgets must retain the readable 24sp percentage: "
+                                    + percentView.getTextSize() + " expected=" + expectedSize + " font=" + fontScale);
+                    checkWidgetContentBounds(singleHost);
+                }
+                if (fontScale == 1f) renderImage(singleHost, 374, 124, "widget-weekly-preview.png");
+                // A refresh can change account capabilities without changing the launcher size.
+                singleHost.updateAppWidget(UsageWidget.responsiveViews(singleContext, options, fixture));
+                renderImage(singleHost, 280, (int)Math.ceil(UsageWidget.stackedHeight(singleContext, false)),
+                        "widget-capability-check.png");
+                checkStackedWidget(singleHost, fixture);
+                singleHost.updateAppWidget(UsageWidget.responsiveViews(singleContext, options, single));
+                renderImage(singleHost, 280, (int)Math.ceil(UsageWidget.contentHeight(singleContext, false, single)),
+                        "widget-single-check.png");
+                check(singleHost.findViewById(R.id.widget_second_progress) == null,
+                        "Removing a limit must restore the one-limit layout");
+                Bundle singleOptions = new Bundle(options);
+                singleOptions.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT,
+                        (int)Math.ceil(UsageWidget.contentHeight(singleContext, false, single)));
+                FrameLayout singleLegacy = new FrameLayout(singleContext);
+                singleLegacy.addView(UsageWidget.legacyViews(singleContext, singleOptions, single, false)
+                        .apply(singleContext, singleLegacy));
+                renderImage(singleLegacy, 280, singleOptions.getInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT),
+                        "widget-single-legacy-check.png");
+                check(singleLegacy.findViewById(R.id.widget_cycle_reset) != null,
+                        "Legacy one-limit widgets must also use the shorter height requirement");
+                checkWidgetContentBounds(singleLegacy);
+            }
             android.content.Context context = widgetLayoutContext(1);
             FrameLayout host = new FrameLayout(context);
             host.addView(UsageWidget.views(context, false, single).apply(context, host));
@@ -371,11 +430,14 @@ public final class UsageChecks extends Instrumentation {
                         .equals(fixture.windows.get(1).widgetResetLabel()), "Second cycle reset date must be displayed");
         check(host.findViewById(R.id.widget_resets).getContentDescription().toString().equals("3 reset credits available"),
                 "Reset credits must be distinguished from cycle reset times");
+        checkWidgetContentBounds(host);
+    }
+    private void checkWidgetContentBounds(android.view.ViewGroup host) {
         for (int id : new int[]{R.id.widget_limit_label, R.id.widget_second_label, R.id.widget_percent,
                 R.id.widget_second_percent, R.id.widget_cycle_reset, R.id.widget_second_cycle_reset,
                 R.id.widget_resets, R.id.widget_updated, R.id.widget_refresh}) {
             View view = host.findViewById(id);
-            if (view.getVisibility() == View.GONE) continue;
+            if (view == null || view.getVisibility() == View.GONE) continue;
             android.graphics.Rect bounds = new android.graphics.Rect();
             view.getDrawingRect(bounds); host.offsetDescendantRectToMyCoords(view, bounds);
             check(bounds.top >= 0 && bounds.bottom <= host.getHeight() && bounds.left >= 0

@@ -29,6 +29,11 @@ public final class UsageWidget extends AppWidgetProvider {
     static float stackedHeight(Context context, boolean narrow) {
         return (narrow ? 180 : 168) + Math.max(0, context.getResources().getConfiguration().fontScale - 1) * 140;
     }
+    static float contentHeight(Context context, boolean narrow, UsageSnapshot snapshot) {
+        if (snapshot != null && snapshot.windows.size() > 1) return stackedHeight(context, narrow);
+        return (narrow ? 148 : 124) + Math.max(0,
+                context.getResources().getConfiguration().fontScale - 1) * 130;
+    }
     static RemoteViews responsiveViews(Context context, Bundle options) {
         return responsiveViews(context, options, UsageSnapshot.load(context));
     }
@@ -36,8 +41,8 @@ public final class UsageWidget extends AppWidgetProvider {
         if (Build.VERSION.SDK_INT >= 31) {
             Map<SizeF, RemoteViews> layouts = new LinkedHashMap<>();
             layouts.put(new SizeF(180, 50), views(context, true, snapshot));
-            layouts.put(new SizeF(180, stackedHeight(context, true)), views(context, false, snapshot, true));
-            layouts.put(new SizeF(240, stackedHeight(context, false)), views(context, false, snapshot));
+            layouts.put(new SizeF(180, contentHeight(context, true, snapshot)), views(context, false, snapshot, true));
+            layouts.put(new SizeF(240, contentHeight(context, false, snapshot)), views(context, false, snapshot));
             return new RemoteViews(layouts);
         }
         // The legacy ranges describe portrait width/landscape height and vice versa.
@@ -51,7 +56,7 @@ public final class UsageWidget extends AppWidgetProvider {
         int height = options.getInt(landscape ? AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT
                 : AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 180);
         boolean narrow = width < 240;
-        return views(context, height < stackedHeight(context, narrow), snapshot, narrow);
+        return views(context, height < contentHeight(context, narrow, snapshot), snapshot, narrow);
     }
     @Override public void onReceive(Context context, Intent intent) {
         super.onReceive(context, intent);

@@ -64,6 +64,8 @@ on Android 12+, checks narrow/wide resizing and the legacy orientation fallback,
 and verifies cycle dates, past reset times, reset-credit labels, and text bounds
 at 100%, 130%, and 150% font scale. It needs no signed-in account. PNG previews
 are saved in the app's private cache.
+It also checks weekly-only accounts in a 374 x 124 dp one-row widget, larger
+single-limit text, and transitions between one and two returned limits.
 
 The test runner is `com.example.codexusage.UsageChecks`. Run its ordinary mode on
 a development phone already signed in; it checks real quota reads and a scheduled
