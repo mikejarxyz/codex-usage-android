@@ -36,11 +36,15 @@ final class UsageSnapshot {
         }
         String resetLabel() {
             long seconds = resetsAt - System.currentTimeMillis() / 1000;
-            if (seconds <= 0) return "Reset due · refresh to check";
+            if (seconds <= 0) return widgetResetLabel();
             long hours = seconds / 3600;
             if (hours >= 24) return "Resets in " + (hours / 24) + "d " + (hours % 24) + "h";
             if (seconds >= 3600) return "Resets in " + (seconds / 3600) + "h " + ((seconds % 3600) / 60) + "m";
             return "Resets in " + Math.max(1, (seconds + 59) / 60) + "m";
+        }
+        String widgetResetLabel() {
+            return "Resets " + new SimpleDateFormat("MMM d, h:mm a", Locale.getDefault())
+                    .format(new Date(resetsAt * 1000));
         }
     }
     static final class Reset {

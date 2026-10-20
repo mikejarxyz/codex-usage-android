@@ -31,6 +31,7 @@ public final class UsageChecks extends Instrumentation {
     private boolean refreshLayoutCheck;
     private boolean schedulingPolicyCheck;
     private boolean backgroundStatusCheck;
+    private boolean widgetLayoutCheck;
     @Override public void onCreate(Bundle arguments) {
         super.onCreate(arguments);
         signOutCheck = arguments != null && "true".equals(arguments.getString("signOutCheck"));
@@ -40,6 +41,7 @@ public final class UsageChecks extends Instrumentation {
         refreshLayoutCheck = arguments != null && "true".equals(arguments.getString("refreshLayoutCheck"));
         schedulingPolicyCheck = arguments != null && "true".equals(arguments.getString("schedulingPolicyCheck"));
         backgroundStatusCheck = arguments != null && "true".equals(arguments.getString("backgroundStatusCheck"));
+        widgetLayoutCheck = arguments != null && "true".equals(arguments.getString("widgetLayoutCheck"));
         start();
     }
     @Override public void onStart() {
@@ -76,6 +78,11 @@ public final class UsageChecks extends Instrumentation {
                 return;
             }
             checkSchedulingPolicy();
+            if (widgetLayoutCheck) {
+                checkWidgetLayouts();
+                result.putString("stream", "Responsive widget resizing, cycle dates, reset credits, past reset times, and large-text bounds passed.\n");
+                return;
+            }
             if (schedulingPolicyCheck) {
                 checkUnusedPluginCacheCleanup();
                 result.putString("stream", "Scheduling jitter, cooldown, cache recovery eligibility, clock rollback, and plugin-cache cleanup safety checks passed.\n");
@@ -165,7 +172,7 @@ public final class UsageChecks extends Instrumentation {
                 check(((TextView) widget.findViewById(R.id.widget_percent)).getText().toString()
                         .equals((finalActual.windows.size() > 1 ? finalActual.windows.get(0) : finalActual.widgetWindow()).percent() + " left"),
                         "Widget must render real remaining quota");
-                renderImage(host, 280, finalActual.windows.size() > 1 ? 124 : 84, "widget-preview.png");
+                renderImage(host, 280, 220, "widget-preview.png");
                 FrameLayout compactHost = new FrameLayout(getTargetContext());
                 View compactWidget = UsageWidget.views(getTargetContext(), true).apply(getTargetContext(), compactHost);
                 compactHost.addView(compactWidget);
@@ -240,6 +247,153 @@ public final class UsageChecks extends Instrumentation {
         check(!UsageRefreshJob.due(null, false, 0, now), "Signed-out widgets must not poll");
         check(UsageRefreshJob.due(quota, true, now, now - 60_000),
                 "Clock rollback must not freeze automatic updates");
+    }
+    @android.annotation.TargetApi(31)
+    private void checkWidgetLayouts() throws Exception {
+        check(android.os.Build.VERSION.SDK_INT >= 31, "Responsive widget checks require Android 12+");
+        long now = System.currentTimeMillis();
+        UsageSnapshot fixture = UsageSnapshot.fromResponse(response(now), now);
+        fixture.windows.clear();
+        fixture.windows.add(new UsageSnapshot.Window(3, 300, now / 1000 - 3600));
+        fixture.windows.add(new UsageSnapshot.Window(0, 10080, now / 1000 + 3 * 86400));
+        fixture.availableResets = 3;
+        check(!fixture.windows.get(0).resetLabel().contains("due"), "Past resets must not display a due state");
+        java.util.TimeZone originalZone = java.util.TimeZone.getDefault();
+        try {
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("UTC"));
+            String utc = fixture.windows.get(0).widgetResetLabel();
+            java.util.TimeZone.setDefault(java.util.TimeZone.getTimeZone("America/Winnipeg"));
+            check(!utc.equals(fixture.windows.get(0).widgetResetLabel()), "Reset dates must use the device time zone");
+        } finally { java.util.TimeZone.setDefault(originalZone); }
+        runOnMainSync(() -> {
+            Bundle options = new Bundle();
+            options.putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_WIDTH, 280);
+            options.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_WIDTH, 420);
+            options.putInt(AppWidgetManager.OPTION_APPWIDGET_MIN_HEIGHT, 80);
+            options.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, 220);
+            android.appwidget.AppWidgetProviderInfo info = AppWidgetManager.getInstance(getTargetContext())
+                    .getInstalledProviders().stream().filter(provider -> provider.provider.equals(
+                            new ComponentName(getTargetContext(), UsageWidget.class))).findFirst().orElseThrow();
+            check(info.targetCellHeight == 2, "New widgets must default to two launcher rows");
+            for (float fontScale : new float[]{1f, 1.3f, 1.5f}) {
+                android.content.Context context = widgetLayoutContext(fontScale);
+                AppWidgetHostView host = new AppWidgetHostView(context);
+                host.setAppWidget(0, info);
+                host.setPadding(0, 0, 0, 0);
+                host.updateAppWidget(UsageWidget.responsiveViews(context, options, fixture));
+                int wideHeight = (int)Math.ceil(UsageWidget.stackedHeight(context, false));
+                int narrowHeight = (int)Math.ceil(UsageWidget.stackedHeight(context, true));
+                // AppWidgetHostView chooses the responsive child from its actual measured size.
+                renderImage(host, 280, wideHeight, "widget-resize-check.png");
+                checkStackedWidget(host, fixture);
+                renderImage(host, 320, 80, "widget-compact-check.png");
+                check(host.findViewById(R.id.widget_cycle_reset) == null,
+                        "Genuinely short slots must keep the compact layout");
+                renderImage(host, 180, narrowHeight, "widget-narrow-check.png");
+                checkStackedWidget(host, fixture);
+                renderImage(host, 320, wideHeight, "widget-resize-check.png");
+                checkStackedWidget(host, fixture);
+                // Legacy portrait height must not be confused with the short landscape height.
+                FrameLayout legacy = new FrameLayout(context);
+                Bundle legacyOptions = new Bundle(options);
+                legacyOptions.putInt(AppWidgetManager.OPTION_APPWIDGET_MAX_HEIGHT, Math.max(220, wideHeight));
+                legacy.addView(UsageWidget.legacyViews(context, legacyOptions, fixture, false).apply(context, legacy));
+                renderImage(legacy, 280, Math.max(220, wideHeight), "widget-legacy-check.png");
+                checkStackedWidget(legacy, fixture);
+                if (fontScale == 1f) {
+                    android.content.SharedPreferences state = context.getSharedPreferences("widget_state", 0);
+                    android.graphics.Rect stableBar = new android.graphics.Rect();
+                    host.findViewById(R.id.widget_progress).getDrawingRect(stableBar);
+                    host.offsetDescendantRectToMyCoords(host.findViewById(R.id.widget_progress), stableBar);
+                    for (boolean loading : new boolean[]{true, false}) {
+                        state.edit().putBoolean("loading", loading).putString("error", loading ? "" : "network unavailable").commit();
+                        host.updateAppWidget(UsageWidget.responsiveViews(context, options, fixture));
+                        renderImage(host, 320, wideHeight, "widget-status-check.png");
+                        checkStackedWidget(host, fixture);
+                        check(host.findViewById(R.id.widget_resets).getVisibility() == View.GONE,
+                                "Refresh status must have enough footer space");
+                        android.graphics.Rect currentBar = new android.graphics.Rect();
+                        host.findViewById(R.id.widget_progress).getDrawingRect(currentBar);
+                        host.offsetDescendantRectToMyCoords(host.findViewById(R.id.widget_progress), currentBar);
+                        check(stableBar.equals(currentBar), "Loading and errors must not move the quota bars");
+                    }
+                    state.edit().clear().commit();
+                    host.updateAppWidget(UsageWidget.responsiveViews(context, options, fixture));
+                    renderImage(host, 320, 220, "widget-stacked-preview.png");
+                    renderImage(host, 180, 220, "widget-narrow-preview.png");
+                } else if (fontScale == 1.5f) {
+                    renderImage(host, 320, 260, "widget-large-text-preview.png");
+                }
+            }
+            UsageSnapshot single = new UsageSnapshot();
+            single.windows.add(fixture.windows.get(0));
+            single.updatedAt = now;
+            android.content.Context context = widgetLayoutContext(1);
+            FrameLayout host = new FrameLayout(context);
+            host.addView(UsageWidget.views(context, false, single).apply(context, host));
+            renderImage(host, 280, 180, "widget-single-check.png");
+            check(((TextView)host.findViewById(R.id.widget_cycle_reset)).getText().toString()
+                            .equals(single.windows.get(0).widgetResetLabel()), "Single-cycle widgets must show reset time");
+            host.removeAllViews();
+            host.addView(UsageWidget.views(context, false, null).apply(context, host));
+            renderImage(host, 280, 180, "widget-empty-check.png");
+            check(host.findViewById(R.id.widget_cycle_reset).getVisibility() == View.GONE,
+                    "Signed-out widgets must not invent a reset time");
+        });
+    }
+    private android.content.Context widgetLayoutContext(float fontScale) {
+        android.content.res.Configuration config = new android.content.res.Configuration(
+                getTargetContext().getResources().getConfiguration());
+        config.fontScale = fontScale;
+        return new android.content.ContextWrapper(getTargetContext().createConfigurationContext(config)) {
+            @Override public android.content.SharedPreferences getSharedPreferences(String name, int mode) {
+                return super.getSharedPreferences("widget_state".equals(name) ? "widget_layout_fixture" : name, mode);
+            }
+        };
+    }
+    private void checkStackedWidget(android.view.ViewGroup host, UsageSnapshot fixture) {
+        View first = host.findViewById(R.id.widget_progress);
+        View second = host.findViewById(R.id.widget_second_progress);
+        check(first != null && second != null, "Both quota progress bars must render");
+        android.graphics.Rect firstBounds = new android.graphics.Rect(), secondBounds = new android.graphics.Rect();
+        first.getDrawingRect(firstBounds); host.offsetDescendantRectToMyCoords(first, firstBounds);
+        second.getDrawingRect(secondBounds); host.offsetDescendantRectToMyCoords(second, secondBounds);
+        check(firstBounds.bottom < secondBounds.top && firstBounds.left == secondBounds.left
+                        && firstBounds.right == secondBounds.right, "Progress bars must stack at the same full width: "
+                        + firstBounds + ", " + secondBounds + " in " + host.getWidth() + "x" + host.getHeight()
+                        + " font=" + host.getResources().getConfiguration().fontScale);
+        String percent = ((TextView)host.findViewById(R.id.widget_percent)).getText().toString();
+        check(percent.equals("97% left") || percent.equals("97%"),
+                "Passing a reset time must retain the last confirmed quota");
+        check(((TextView)host.findViewById(R.id.widget_cycle_reset)).getText().toString()
+                        .equals(fixture.windows.get(0).widgetResetLabel()), "First cycle reset date must be displayed");
+        check(((TextView)host.findViewById(R.id.widget_second_cycle_reset)).getText().toString()
+                        .equals(fixture.windows.get(1).widgetResetLabel()), "Second cycle reset date must be displayed");
+        check(host.findViewById(R.id.widget_resets).getContentDescription().toString().equals("3 reset credits available"),
+                "Reset credits must be distinguished from cycle reset times");
+        for (int id : new int[]{R.id.widget_limit_label, R.id.widget_second_label, R.id.widget_percent,
+                R.id.widget_second_percent, R.id.widget_cycle_reset, R.id.widget_second_cycle_reset,
+                R.id.widget_resets, R.id.widget_updated, R.id.widget_refresh}) {
+            View view = host.findViewById(id);
+            if (view.getVisibility() == View.GONE) continue;
+            android.graphics.Rect bounds = new android.graphics.Rect();
+            view.getDrawingRect(bounds); host.offsetDescendantRectToMyCoords(view, bounds);
+            check(bounds.top >= 0 && bounds.bottom <= host.getHeight() && bounds.left >= 0
+                            && bounds.right <= host.getWidth(), "Widget content must fit its allocated bounds: "
+                            + view.getResources().getResourceEntryName(id) + " " + bounds + " in "
+                            + host.getWidth() + "x" + host.getHeight() + " font="
+                            + host.getResources().getConfiguration().fontScale);
+            if (view instanceof TextView) {
+                TextView text = (TextView)view;
+                android.text.Layout layout = text.getLayout();
+                check(layout != null && layout.getHeight() <= text.getHeight(), "Text must not be vertically clipped: " + id);
+                for (int line = 0; line < layout.getLineCount(); line++)
+                    check(layout.getEllipsisCount(line) == 0, "Widget text must remain readable: " + text.getText()
+                            + " view=" + view.getResources().getResourceEntryName(id) + " " + bounds
+                            + " font=" + host.getResources().getConfiguration().fontScale + " textSize=" + text.getTextSize()
+                            + " lines=" + layout.getLineCount());
+            }
+        }
     }
     private void checkUnusedPluginCacheCleanup() throws Exception {
         Path base = Files.createTempDirectory(getTargetContext().getCacheDir().toPath(), "plugin-cache-check");
@@ -533,7 +687,7 @@ public final class UsageChecks extends Instrumentation {
                     FrameLayout host = new FrameLayout(getTargetContext());
                     View widget = UsageWidget.views(getTargetContext(), compact, fixture).apply(getTargetContext(), host);
                     host.addView(widget);
-                    renderImage(host, compact ? 180 : 280, compact ? 50 : 124,
+                    renderImage(host, compact ? 180 : 280, compact ? 50 : 220,
                             compact ? "widget-dual-compact-preview.png" : "widget-dual-preview.png");
                     check(((TextView)widget.findViewById(R.id.widget_percent)).getText().toString().startsWith("20%"), "Five-hour percentage must render");
                     check(((TextView)widget.findViewById(R.id.widget_second_percent)).getText().toString().startsWith("60%"), "Weekly percentage must render");
@@ -612,9 +766,13 @@ public final class UsageChecks extends Instrumentation {
     private void renderImage(View view, int widthDp, int heightDp, String filename) {
         float density = getTargetContext().getResources().getDisplayMetrics().density;
         int width = Math.round(widthDp * density), height = Math.round(heightDp * density);
-        view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
-                View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
-        view.layout(0, 0, width, height);
+        // A responsive host can replace its child during onLayout and request
+        // another pass. Let the new child settle just as it would in a launcher.
+        for (int pass = 0; pass < (view instanceof AppWidgetHostView ? 2 : 1); pass++) {
+            view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                    View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY));
+            view.layout(0, 0, width, height);
+        }
         Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
         view.draw(new Canvas(bitmap));
         try (FileOutputStream output = new FileOutputStream(new File(getTargetContext().getCacheDir(), filename))) {

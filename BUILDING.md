@@ -59,6 +59,12 @@ as repository source. GitHub Releases can distribute deliberately prepared build
 
 ## Device checks
 
+`-e widgetLayoutCheck true` renders synthetic quota through a real widget host
+on Android 12+, checks narrow/wide resizing and the legacy orientation fallback,
+and verifies cycle dates, past reset times, reset-credit labels, and text bounds
+at 100%, 130%, and 150% font scale. It needs no signed-in account. PNG previews
+are saved in the app's private cache.
+
 The test runner is `com.example.codexusage.UsageChecks`. Run its ordinary mode on
 a development phone already signed in; it checks real quota reads and a scheduled
 background job. It briefly ages only the sanitized display cache and restores it

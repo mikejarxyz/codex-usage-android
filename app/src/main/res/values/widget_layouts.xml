@@ -1,0 +1,4 @@
+<resources>
+    <item name="usage_widget_narrow" type="layout">@layout/usage_widget</item>
+    <item name="usage_widget_dual_narrow" type="layout">@layout/usage_widget_dual</item>
+</resources>

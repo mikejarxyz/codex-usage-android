@@ -29,7 +29,9 @@ the last five minutes are skipped to avoid duplicate reads without losing a
 whole scheduled period to timing jitter. A saved sign-in can recover a missing
 display cache; removing the last widget cancels the schedule. Failed
 refreshes preserve the last successful values and timestamp. The widget shows both five-hour and weekly windows when returned, with a
-compact two-column layout at its smallest size.
+stacked layout with local cycle reset dates and times. New widgets default to
+two launcher rows; a compact two-column layout remains for the shortest slots.
+Existing one-row widgets can be resized taller to show the stacked layout.
 
 ## Build and compatibility
 
